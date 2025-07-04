@@ -33,6 +33,7 @@ game-tracker-server/
 ├── .env
 ├── .gitignore
 ├── package.json
+├── README.md
 ```
 
 ## Getting Started (Local Dev)
@@ -208,3 +209,4 @@ If a player's email is entered (instead of a user ID), an invite will be sent vi
 
 ## Author
 Built by Gy Sohn as part of a career change full-stack portfolio project.
+
