@@ -29,6 +29,7 @@ game-tracker-server/
 │   ├── middleware/      # Auth / error handling
 │   ├── services/        # Email, external APIs
 │   ├── config/          # DB + OAuth setup
+│   └── server.js        # App (express instance)
 │   └── server.js        # App entry point
 ├── .env
 ├── .gitignore

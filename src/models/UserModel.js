@@ -1,36 +1,53 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
+const { friendRequestSchema } = require("./subdocuments/FriendRequestSchema");
 
-// Subdocument for friend requests
-const friendRequestSchema = new mongoose.Schema({
-  user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-  status: {
-    type: String,
-    enum: ["Pending", "Accepted", "Rejected"],
-    default: "Pending"
-  }
-}, { _id: false });
-
-// Main User schema
+// Main user schema
 const userSchema = new mongoose.Schema({
-  firstName: { type: String, required: true },
-  lastName:  { type: String, required: true },
-  email:     { type: String, required: true, unique: true },
-  password:  { type: String }, // Required only for "local" users
+  firstName: {
+    type: String,
+    required: true
+  },
+  lastName: {
+    type: String,
+    required: true
+  },
+  email: {
+    type: String,
+    required: true,
+    unique: true
+  },
+  password: {
+    type: String // Required only if authProvider is 'local'
+  },
   authProvider: {
     type: String,
     enum: ["local", "google", "facebook"],
     default: "local"
   },
-  profileIcon: { type: String }, // DiceBear URL
+  profileIcon: {
+    type: String // DiceBear URL or frontend-generated
+  },
 
-  friends: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+  friends: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User"
+  }],
   friendRequests: [friendRequestSchema],
 
   stats: {
-    wins:        { type: Number, default: 0 },
-    losses:      { type: Number, default: 0 },
-    mostPlayed:  { type: String, default: "" }
+    wins: {
+      type: Number,
+      default: 0
+    },
+    losses: {
+      type: Number,
+      default: 0
+    },
+    mostPlayed: {
+      type: String,
+      default: ""
+    }
   },
 
   role: {
@@ -45,7 +62,7 @@ const userSchema = new mongoose.Schema({
   }
 });
 
-// Hash password before saving (only if modified and provider is local)
+// Hash password before saving (only if local and changed)
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password") || this.authProvider !== "local") return next();
   try {
@@ -57,7 +74,7 @@ userSchema.pre("save", async function (next) {
   }
 });
 
-// Compare password method for login
+// Method to compare raw and hashed password
 userSchema.methods.comparePassword = function (candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
 };
