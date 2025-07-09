@@ -1,11 +1,14 @@
 const express = require("express");
 const router = express.Router();
 const sessionController = require("../controllers/sessionController");
+const authMiddleware = require("../middleware/authMiddleware");
+const matchPrivacyGuard = require("../middleware/matchPrivacyGuard");
 
-router.get("/", sessionController.getAllSessions);
-router.post("/", sessionController.createSession);
-router.get("/:id", sessionController.getSessionById);
-router.put("/:id", sessionController.updateSession);
-router.delete("/:id", sessionController.deleteSession);
+router.get("/", authMiddleware, sessionController.getAllSessions); // returns only user's matches
+router.post("/", authMiddleware, sessionController.createSession);
+
+router.get("/:id", authMiddleware, matchPrivacyGuard, sessionController.getSessionById);
+router.put("/:id", authMiddleware, matchPrivacyGuard, sessionController.updateSession);
+router.delete("/:id", authMiddleware, matchPrivacyGuard, sessionController.deleteSession);
 
 module.exports = router;

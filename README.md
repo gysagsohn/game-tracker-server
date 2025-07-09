@@ -23,18 +23,18 @@ This is the backend API for the [Game Tracker](https://github.com/gysagsohn/game
 ```bash
 game-tracker-server/
 ├── src/
-│   ├── controllers/     # Request logic (handlers)
-│   ├── models/          # Mongoose schemas
-│   ├── routes/          # API routes
-│   ├── middleware/      # Auth / error handling
-│   ├── services/        # Email, external APIs
-│   ├── config/          # DB + OAuth setup
-│   └── server.js        # App (express instance)
-│   └── server.js        # App entry point
+│   ├── config/         # DB setup
+│   ├── controllers/    # Route logic (auth, user, session, game, admin)
+│   ├── middleware/     # Auth, role, and privacy guards
+│   ├── models/         # Mongoose models + subdocs
+│   ├── routes/         # Express routes
+│   ├── scripts/        # Seed/reset DB scripts
+│   ├── index.js        # Starts server and connects DB
+│   └── server.js       # Express app instance
 ├── .env
 ├── .gitignore
 ├── package.json
-├── README.md
+└── README.md
 ```
 
 ## Getting Started (Local Dev)
@@ -66,25 +66,36 @@ EMAIL_FROM=your_verified_sender_email
 npm run dev
 ```
 
+
+## Middleware
+| Field                   | Type                                                             | 
+|-------------------------|------------------------------------------------------------------|
+| `authMiddleware`        | Verifies JWT + attaches `req.user`                               |
+| `lastadminCheckName`    | Blocks access if `req.user.role !== 'admin'`                     | 
+| `privacyGuard`          | Stri	Users can only access their own data (e.g., `/users/:id)`  | 
+| `matchPrivacyGuard`     | StrUsers can only view/edit their own matches (unless admin)ng   | 
+
+
+
 ##  Data Models (Mongoose Schema Plan)
 
 ## Data Models (Mongoose Schema Plan)
 
 ### User Model
 
-| Field          | Type     | Description                                      |
-|----------------|----------|--------------------------------------------------|
-| `firstName`    | String   | Required                                         |
-| `lastName`     | String   | Required                                         |
-| `email`        | String   | Required, unique — used for login               |
-| `password`     | String   | Required unless using OAuth                     |
-| `authProvider` | String   | `"local"` \| `"google"` \| `"facebook"`         |
-| `profileIcon`  | String   | DiceBear URL based on user name/email           |
-| `friends`      | [ObjectId] | Users this person is connected with            |
-| `friendRequests` | [Subdoc] | Incoming/outgoing requests with status         |
+| Field          | Type     | Description                                            |
+|----------------|----------|--------------------------------------------------------|
+| `firstName`    | String   | Required                                               |
+| `lastName`     | String   | Required                                               |
+| `email`        | String   | Required, unique — used for login                      |
+| `password`     | String   | Required unless using OAuth                            |
+| `authProvider` | String   | `"local"` \| `"google"` \| `"facebook"`                |
+| `profileIcon`  | String   | DiceBear URL based on user name/email                  |
+| `friends`      | [ObjectId] | Users this person is connected with                  |
+| `friendRequests` | [Subdoc] | Incoming/outgoing requests with status               |
 | `stats`        | Object   | `{ wins: Number, losses: Number, mostPlayed: String }` |
-| `role`         | String   | `"user"` or `"admin"` (for moderation)          |
-| `createdAt`    | Date     | Timestamp                                       |
+| `role`         | String   | `"user"` or `"admin"` (for moderation)                 |
+| `createdAt`    | Date     | Timestamp                                              |
 
 #### FriendRequests Subdoc
 
@@ -186,6 +197,7 @@ If a player's email is entered (instead of a user ID), an invite will be sent vi
 |--------|----------------|------------------------------------|
 | GET    | `/`            | List all games                     |
 | POST   | `/`            | Add new game (users or admin)      |
+| PUT	   | /games/:id	    | Edit game (admin only for now).    |
 | DELETE | `/:id`         | Admin delete game                  |
 ```
 
@@ -201,9 +213,35 @@ If a player's email is entered (instead of a user ID), an invite will be sent vi
 | POST   | `/:id/confirm`   | Confirm a match if you're a player      |
 ```
 
-### `/admin` – (Optional)
-- Protected by `adminCheck` middleware  
-- For viewing system stats, user list, deleting games, etc.
+## Admin Routes
+
+Protected by `authMiddleware` + `adminCheck`
+
+| Method | Endpoint                      | Description                        |
+|--------|-------------------------------|------------------------------------|
+| GET    | `/admin/users`               | All users + match history          |
+| PUT    | `/admin/users/:id`           | Admin updates user                 |
+| DELETE | `/admin/users/:id`           | Admin deletes user                 |
+| POST   | `/admin/games`               | Create game                        |
+| PUT    | `/admin/games/:id`           | Update game                        |
+| DELETE | `/admin/games/:id`           | Delete game                        |
+| PUT    | `/admin/sessions/:id`        | Update any match                   |
+| DELETE | `/admin/sessions/:id`        | Delete any match                   |
+| GET    | `/admin/users/search`        | Find users by name/email           |
+| GET    | `/admin/stats/users`         | Total users, verified, admins      |
+| GET    | `/admin/stats/games`         | Most played game list              |
+| GET    | `/admin/sessions/date-range` | Matches within a date window       |
+
+##  Seeding Strategy
+`npm run seed` — Seeds the database with standard games:
+- Monopoly Deal
+- Catan
+- Phase 10
+- Skip-Bo
+- Uno
+
+No admin accounts are seeded.
+If a user signs up with the email gysagsohn@hotmail.com, they will automatically be given role: "admin".
 
 ## Related Repositories
 [Frontend: game-tracker-client](https://github.com/gysagsohn/game-tracker-client)

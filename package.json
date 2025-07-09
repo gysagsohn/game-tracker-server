@@ -5,7 +5,9 @@
   "type": "commonjs",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "dev": "nodemon src/index.js",
+    "seed": "node src/scripts/seed.js",
+    "reset": "node src/scripts/reset.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

@@ -11,6 +11,7 @@ app.use(express.json());
 app.use("/users", require("./routes/userRouter"));
 app.use("/games", require("./routes/gameRouter"));
 app.use("/sessions", require("./routes/sessionRouter"));
+app.use("/auth", require("./routes/authRouter"));
 
 // Health check
 app.get("/", (req, res) => {
@@ -29,5 +30,6 @@ app.use((error, req, res, next) => {
 		error: error.message
 	});
 });
+
 
 module.exports = { app };

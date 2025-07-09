@@ -17,6 +17,12 @@ const userSchema = new mongoose.Schema({
     required: true,
     unique: true
   },
+
+  isEmailVerified: {
+  type: Boolean,
+  default: false
+  },
+  
   password: {
     type: String // Required only if authProvider is 'local'
   },
