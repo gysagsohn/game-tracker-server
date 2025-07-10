@@ -9,7 +9,7 @@ dotenv.config();
 async function seed() {
   await databaseConnect();
 
-  // ✅ Only seed games — NO user credentials
+  // Only seed games 
   const standardGames = [
     {
       name: "Monopoly Deal",

@@ -13,9 +13,10 @@ This is the backend API for the [Game Tracker](https://github.com/gysagsohn/game
 - dotenv
 - bcrypt
 - CORS
-- OAuth (Google & Facebook)
+- Google OAuth via Passport.js
 - DiceBear Avatars (auto-generated user profile icons)
 - Resend (email invite + match confirmation service)
+- Google OAuth via Passport.js
 
 ---
 
@@ -58,8 +59,8 @@ GOOGLE_CLIENT_SECRET=your_google_secret
 FACEBOOK_APP_ID=your_fb_app_id
 FACEBOOK_APP_SECRET=your_fb_app_secret
 
-RESEND_API_KEY=your_resend_api_key
-EMAIL_FROM=your_verified_sender_email
+EMAIL_FROM=your_gmail@gmail.com
+EMAIL_APP_PASSWORD=your_gmail_app_password
 ```
 4. Start the server:
 ``` bash
@@ -72,9 +73,8 @@ npm run dev
 |-------------------------|------------------------------------------------------------------|
 | `authMiddleware`        | Verifies JWT + attaches `req.user`                               |
 | `lastadminCheckName`    | Blocks access if `req.user.role !== 'admin'`                     | 
-| `privacyGuard`          | Stri	Users can only access their own data (e.g., `/users/:id)`  | 
-| `matchPrivacyGuard`     | StrUsers can only view/edit their own matches (unless admin)ng   | 
-
+| `privacyGuard`          | Users can only access their own data (e.g. `/users/:id`)         |
+| `matchPrivacyGuard`     | Users can only view/edit their own matches (unless admin)        |
 
 
 ##  Data Models (Mongoose Schema Plan)
@@ -106,7 +106,7 @@ npm run dev
 }
 ```
 
-### Match Model
+### Session (Match) Model
 
 | Field         | Type       | Description                                      |
 |---------------|------------|--------------------------------------------------|
@@ -232,6 +232,19 @@ Protected by `authMiddleware` + `adminCheck`
 | GET    | `/admin/stats/games`         | Most played game list              |
 | GET    | `/admin/sessions/date-range` | Matches within a date window       |
 
+### /friends – Friend Routes
+| Method | Route                     | Description                              |
+|--------|---------------------------|------------------------------------------|
+| POST   | `/send`                  | Send a friend request                    |
+| POST   | `/respond`               | Accept or reject a request               |
+| GET    | `/requests`              | View pending friend requests             |
+| GET    | `/list/:id`              | View someone's friends                   |
+| GET    | `/suggested`             | Suggested mutual friends                 |
+| POST   | `/unfriend`              | Remove a friend                          |
+| GET    | `/notifications`         | Get all friend-related notifications     |
+| PUT    | `/notifications/:id/read`| Mark notification as read                |
+| GET    | `/mutual/:id`            | View mutual friends with a user          |
+
 ##  Seeding Strategy
 `npm run seed` — Seeds the database with standard games:
 - Monopoly Deal
@@ -248,4 +261,8 @@ If a user signs up with the email gysagsohn@hotmail.com, they will automatically
 
 ## Author
 Built by Gy Sohn as part of a career change full-stack portfolio project.
+
+### Contact
+For feedback, feature suggestions, or collaboration ideas, feel free to connect via [LinkedIn](https://www.linkedin.com/in/gysohn) or raise an issue on GitHub.
+
 

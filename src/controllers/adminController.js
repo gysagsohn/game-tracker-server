@@ -2,10 +2,10 @@ const User = require("../models/UserModel");
 const Game = require("../models/GameModel");
 const Session = require("../models/SessionModel");
 
-// 1. View all users + their match history
+// View all users and sessions
 async function getAllUsersWithMatches(req, res, next) {
   try {
-    const users = await User.find().select("-password"); // exclude sensitive info
+    const users = await User.find().select("-password");
     const sessions = await Session.find().populate("game playedBy scores.player");
     res.json({ users, sessions });
   } catch (err) {
@@ -13,7 +13,7 @@ async function getAllUsersWithMatches(req, res, next) {
   }
 }
 
-// 2. Admin edits user
+// CRUD - Users
 async function updateUserByAdmin(req, res, next) {
   try {
     const updated = await User.findByIdAndUpdate(req.params.id, req.body, { new: true });
@@ -23,7 +23,6 @@ async function updateUserByAdmin(req, res, next) {
   }
 }
 
-// 3. Admin deletes user
 async function deleteUserByAdmin(req, res, next) {
   try {
     await User.findByIdAndDelete(req.params.id);
@@ -33,7 +32,7 @@ async function deleteUserByAdmin(req, res, next) {
   }
 }
 
-// 4. Admin creates game
+// CRUD - Games
 async function createGameByAdmin(req, res, next) {
   try {
     const newGame = new Game(req.body);
@@ -44,7 +43,6 @@ async function createGameByAdmin(req, res, next) {
   }
 }
 
-// 5. Admin updates game
 async function updateGameByAdmin(req, res, next) {
   try {
     const updated = await Game.findByIdAndUpdate(req.params.id, req.body, { new: true });
@@ -54,7 +52,6 @@ async function updateGameByAdmin(req, res, next) {
   }
 }
 
-// 6. Admin deletes game
 async function deleteGameByAdmin(req, res, next) {
   try {
     await Game.findByIdAndDelete(req.params.id);
@@ -64,7 +61,7 @@ async function deleteGameByAdmin(req, res, next) {
   }
 }
 
-// 7. Admin updates session
+// CRUD - Sessions
 async function updateSessionByAdmin(req, res, next) {
   try {
     const updated = await Session.findByIdAndUpdate(req.params.id, req.body, { new: true });
@@ -74,7 +71,6 @@ async function updateSessionByAdmin(req, res, next) {
   }
 }
 
-// 8. Admin deletes session
 async function deleteSessionByAdmin(req, res, next) {
   try {
     await Session.findByIdAndDelete(req.params.id);
@@ -84,7 +80,7 @@ async function deleteSessionByAdmin(req, res, next) {
   }
 }
 
-// Search Users by Name or Email
+// Analytics
 async function searchUsers(req, res, next) {
   try {
     const query = req.query.query || "";
@@ -101,7 +97,6 @@ async function searchUsers(req, res, next) {
   }
 }
 
-//User Stats Summary
 async function getUserStats(req, res, next) {
   try {
     const totalUsers = await User.countDocuments();
@@ -114,7 +109,6 @@ async function getUserStats(req, res, next) {
   }
 }
 
-// Most Played Games
 async function getGameStats(req, res, next) {
   try {
     const stats = await Session.aggregate([
@@ -130,7 +124,6 @@ async function getGameStats(req, res, next) {
       { $unwind: "$gameInfo" },
       {
         $project: {
-          _id: 0,
           gameId: "$gameInfo._id",
           title: "$gameInfo.name",
           plays: "$count"
@@ -144,7 +137,6 @@ async function getGameStats(req, res, next) {
   }
 }
 
-// Sessions by Date Range
 async function getSessionsByDateRange(req, res, next) {
   try {
     const start = new Date(req.query.start);
@@ -160,9 +152,105 @@ async function getSessionsByDateRange(req, res, next) {
   }
 }
 
+async function getMatchCountsGrouped(req, res, next) {
+  try {
+    const unit = req.query.unit === "month" ? "%Y-%m" : "%Y-%U";
+    const groupBy = { $dateToString: { format: unit, date: "$date" } };
+
+    const data = await Session.aggregate([
+      { $group: { _id: groupBy, count: { $sum: 1 } } },
+      { $sort: { _id: 1 } }
+    ]);
+
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getTopPlayers(req, res, next) {
+  try {
+    const users = await User.find()
+      .sort({ "stats.wins": -1 })
+      .limit(10)
+      .select("firstName lastName stats.wins");
+    res.json(users);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getUserWinRates(req, res, next) {
+  try {
+    const users = await User.find().select("firstName lastName stats");
+
+    const winRates = users.map(user => {
+      const total = user.stats.wins + user.stats.losses;
+      const rate = total > 0 ? (user.stats.wins / total) * 100 : 0;
+
+      return {
+        name: `${user.firstName} ${user.lastName}`,
+        winRate: Math.round(rate)
+      };
+    });
+
+    res.json(winRates);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Admin tools
+async function resetUserStats(req, res, next) {
+  try {
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      {
+        stats: { wins: 0, losses: 0, mostPlayed: "" }
+      },
+      { new: true }
+    );
+    res.json({ message: "User stats reset", user });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function resendVerificationAsAdmin(req, res, next) {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    if (user.isEmailVerified) return res.status(400).json({ message: "Already verified" });
+
+    const sendVerificationEmail = require("../controllers/authController").sendVerificationEmail;
+    await sendVerificationEmail(user);
+    res.json({ message: "Verification email resent." });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function forceVerifyUser(req, res, next) {
+  try {
+    const user = await User.findByIdAndUpdate(req.params.id, { isEmailVerified: true }, { new: true });
+    res.json(user);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function toggleSuspendUser(req, res, next) {
+  try {
+    const user = await User.findById(req.params.id);
+    user.isSuspended = !user.isSuspended;
+    await user.save();
+    res.json({ message: user.isSuspended ? "User suspended" : "User reactivated" });
+  } catch (err) {
+    next(err);
+  }
+}
 
 module.exports = {
-  // existing admin CRUD
   getAllUsersWithMatches,
   updateUserByAdmin,
   deleteUserByAdmin,
@@ -171,10 +259,15 @@ module.exports = {
   deleteGameByAdmin,
   updateSessionByAdmin,
   deleteSessionByAdmin,
-
-  // new insights
   searchUsers,
   getUserStats,
   getGameStats,
-  getSessionsByDateRange
+  getSessionsByDateRange,
+  getMatchCountsGrouped,
+  getTopPlayers,
+  getUserWinRates,
+  resetUserStats,
+  resendVerificationAsAdmin,
+  forceVerifyUser,
+  toggleSuspendUser
 };

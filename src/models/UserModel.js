@@ -22,6 +22,14 @@ const userSchema = new mongoose.Schema({
   type: Boolean,
   default: false
   },
+
+  resetPasswordToken: {
+  type: String,
+  },
+
+  resetPasswordExpires: {
+  type: Date,
+  },
   
   password: {
     type: String // Required only if authProvider is 'local'
@@ -65,7 +73,23 @@ const userSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
-  }
+  },
+
+  isSuspended: {
+  type: Boolean,
+  },
+
+  notifications: [
+  {
+    type: { type: String }, // "friend-request", "friend-accept", etc.
+    from: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    message: String,
+    date: { type: Date, default: Date.now },
+    isRead: { type: Boolean, default: false }
+  }]
+
+  
+
 });
 
 // Hash password before saving (only if local and changed)
