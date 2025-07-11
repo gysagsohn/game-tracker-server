@@ -1,6 +1,7 @@
 const User = require("../models/UserModel");
 const Notification = require("../models/NotificationModel");
 const sendEmail = require("../utils/sendEmail");
+const logUserActivity = require("../utils/logActivity");
 
 // Send a friend request
 async function sendFriendRequest(req, res, next) {
@@ -43,6 +44,8 @@ async function sendFriendRequest(req, res, next) {
       type: "friend_request",
       message: `${sender.firstName} sent you a friend request. <a href="https://your-frontend.com/friends/requests">View</a>`
     });
+
+    await logUserActivity(req.user._id, "Sent Friend Request", { to: recipient._id });
 
     // Send email notification
     const html = `

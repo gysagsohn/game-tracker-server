@@ -11,6 +11,7 @@ const friendRequestSchema = new mongoose.Schema({
     enum: ["Pending", "Accepted", "Rejected"],
     default: "Pending"
   }
+  
 }, { _id: false });
 
 module.exports = { friendRequestSchema };

@@ -17,6 +17,7 @@ app.use("/users", require("./routes/userRouter"));
 app.use("/games", require("./routes/gameRouter"));
 app.use("/sessions", require("./routes/sessionRouter"));
 app.use("/auth", require("./routes/authRouter"));
+app.use("/friends", require("./routes/friendRouter"));
 
 // Health check
 app.get("/", (req, res) => {
@@ -35,6 +36,8 @@ app.use((error, req, res, next) => {
 		error: error.message
 	});
 });
+
+
 
 
 module.exports = { app };

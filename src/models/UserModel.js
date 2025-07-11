@@ -80,15 +80,38 @@ const userSchema = new mongoose.Schema({
   },
 
   notifications: [
-  {
-    type: { type: String }, // "friend-request", "friend-accept", etc.
-    from: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    message: String,
-    date: { type: Date, default: Date.now },
-    isRead: { type: Boolean, default: false }
-  }]
+    {
+      type: {
+        type: String,
+        enum: ["friend-request", "friend-accept", "info"],
+        required: true
+      },
+      from: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User"
+      },
+      message: String,
+      isRead: { type: Boolean, default: false },
+      date: { type: Date, default: Date.now }
+    }
+  ],
 
-  
+    activityLogs: [
+    {
+      action: {
+        type: String,
+        required: true
+      },
+      metadata: {
+        type: mongoose.Schema.Types.Mixed
+      },
+      createdAt: {
+        type: Date,
+        default: Date.now
+      }
+    }
+  ],
+
 
 });
 

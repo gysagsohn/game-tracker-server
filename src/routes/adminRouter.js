@@ -23,4 +23,10 @@ router.delete("/games/:id", adminController.deleteGameByAdmin);
 router.put("/sessions/:id", adminController.updateSessionByAdmin);
 router.delete("/sessions/:id", adminController.deleteSessionByAdmin);
 
+router.put("/users/:id/reset-stats", adminCheck, adminController.resetUserStats);
+router.post("/users/:id/resend-verification", adminCheck, adminController.resendVerificationAsAdmin);
+router.get("/stats/matches", adminCheck, adminController.getMatchCountsGrouped);
+router.get("/stats/top-players", adminCheck, adminController.getTopPlayers);
+router.get("/stats/win-rates", adminCheck, adminController.getUserWinRates);
+
 module.exports = router;

@@ -1,6 +1,7 @@
 const User = require("../models/UserModel");
 const jwt = require("jsonwebtoken");
 const sendEmail = require("../utils/sendEmail");
+const Session = require("../models/SessionModel");
 
 // Helper: Create a JWT
 function createToken(user) {
@@ -35,9 +36,28 @@ async function signup(req, res, next) {
 
     const role = email === "gysagsohn@hotmail.com" ? "admin" : "user";
 
-    const newUser = new User({ firstName, lastName, email, password, authProvider: "local", isEmailVerified: false, role });
+    const newUser = new User({
+      firstName,
+      lastName,
+      email,
+      password,
+      authProvider: "local",
+      isEmailVerified: false,
+      role
+    });
+
     await newUser.save();
 
+    // Sync guest matches to new account
+    const sessions = await Session.updateMany(
+      { "players.email": email, "players.user": null },
+      { $set: { "players.$[elem].user": newUser._id } },
+      { arrayFilters: [{ "elem.email": email, "elem.user": null }] }
+    );
+
+    console.log(`Synced ${sessions.modifiedCount} guest match(es) to ${email}`);
+
+    // Send verification email
     await sendVerificationEmail(newUser);
 
     const token = createToken(newUser);
