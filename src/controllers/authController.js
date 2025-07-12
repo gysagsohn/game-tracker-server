@@ -12,6 +12,7 @@ function createToken(user) {
 async function sendVerificationEmail(user) {
   const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
   const verificationLink = `http://localhost:3000/verify-email?token=${token}`;
+  
 
   const html = `
     <h2>Email Verification</h2>
@@ -19,7 +20,7 @@ async function sendVerificationEmail(user) {
     <p>Click below to verify your email:</p>
     <a href="${verificationLink}">${verificationLink}</a>
   `;
-
+console.log("📩 VERIFY EMAIL TOKEN:", token);
   await sendEmail(user.email, "Verify your email – Game Tracker", html);
 }
 

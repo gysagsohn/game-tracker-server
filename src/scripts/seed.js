@@ -59,9 +59,9 @@ async function seed() {
     const exists = await Game.findOne({ name: game.name });
     if (!exists) {
       await Game.create(game);
-      console.log(`🎮 Seeded game: ${game.name}`);
+      console.log(`Seeded game: ${game.name}`);
     } else {
-      console.log(`✅ Game already exists: ${game.name}`);
+      console.log(`Game already exists: ${game.name}`);
     }
   }
 
@@ -70,6 +70,6 @@ async function seed() {
 }
 
 seed().catch(err => {
-  console.error("❌ Seed error:", err);
+  console.error("Seed error:", err);
   mongoose.disconnect();
 });

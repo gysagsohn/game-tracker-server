@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const passport = require("passport");
 require("./config/passport"); 
+const adminRouter = require("./routes/adminRouter");
 
 const app = express();
 
@@ -18,6 +19,7 @@ app.use("/games", require("./routes/gameRouter"));
 app.use("/sessions", require("./routes/sessionRouter"));
 app.use("/auth", require("./routes/authRouter"));
 app.use("/friends", require("./routes/friendRouter"));
+app.use("/admin", adminRouter);
 
 // Health check
 app.get("/", (req, res) => {

@@ -6,7 +6,8 @@ const Session = require("../models/SessionModel");
 async function getAllUsersWithMatches(req, res, next) {
   try {
     const users = await User.find().select("-password");
-    const sessions = await Session.find().populate("game playedBy scores.player");
+    const sessions = await Session.find()
+      .populate("game players.user"); 
     res.json({ users, sessions });
   } catch (err) {
     next(err);
@@ -250,6 +251,15 @@ async function toggleSuspendUser(req, res, next) {
   }
 }
 
+async function getAllSessionsForAdmin(req, res, next) {
+  try {
+    const sessions = await Session.find().populate("game players.user");
+    res.json(sessions);
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getAllUsersWithMatches,
   updateUserByAdmin,
@@ -269,5 +279,6 @@ module.exports = {
   resetUserStats,
   resendVerificationAsAdmin,
   forceVerifyUser,
-  toggleSuspendUser
+  toggleSuspendUser,
+  getAllSessionsForAdmin
 };

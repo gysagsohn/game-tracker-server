@@ -6,7 +6,7 @@ const User = require("../models/UserModel");
 
 async function getAllSessions(req, res, next) {
 	try {
-		const sessions = await Session.find().populate("game playedBy scores.player");
+    const sessions = await Session.find({ "players.user": req.user._id }).populate("game players.user");
 		res.json(sessions);
 	} catch (err) {
 		next(err);
@@ -80,13 +80,13 @@ async function sendGuestInviteEmail(email, name = "Player") {
 
 
 async function getSessionById(req, res, next) {
-	try {
-		const session = await Session.findById(req.params.id).populate("game playedBy scores.player");
-		if (!session) return res.status(404).json({ message: "Session not found" });
-		res.json(session);
-	} catch (err) {
-		next(err);
-	}
+  try {
+    const session = await Session.findById(req.params.id).populate("game players.user");
+    if (!session) return res.status(404).json({ message: "Session not found" });
+    res.json(session);
+  } catch (err) {
+    next(err);
+  }
 }
 
 async function updateSession(req, res, next) {
@@ -196,6 +196,19 @@ async function remindMatchConfirmation(req, res, next) {
     next(err);
   }
 }
+
+exports.getMyPendingSessions = async (req, res, next) => {
+  try {
+    const sessions = await Session.find({
+      "players.user": req.user.id,
+      "players.confirmed": false
+    }).populate("game players.user");
+
+    res.json(sessions);
+  } catch (err) {
+    next(err);
+  }
+};
 
 module.exports = {
 	getAllSessions,

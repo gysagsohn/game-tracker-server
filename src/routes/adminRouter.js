@@ -1,32 +1,57 @@
 const express = require("express");
 const router = express.Router();
-const adminController = require("../controllers/adminController");
 const authMiddleware = require("../middleware/authMiddleware");
 const adminCheck = require("../middleware/adminCheck");
 
-// Admin-only actions
-router.use(authMiddleware, adminCheck);
+const {
+  getAllUsersWithMatches,
+  updateUserByAdmin,
+  deleteUserByAdmin,
+  createGameByAdmin,
+  updateGameByAdmin,
+  deleteGameByAdmin,
+  updateSessionByAdmin,
+  deleteSessionByAdmin,
+  searchUsers,
+  getUserStats,
+  getGameStats,
+  getSessionsByDateRange,
+  getMatchCountsGrouped,
+  getTopPlayers,
+  getUserWinRates,
+  resetUserStats,
+  resendVerificationAsAdmin,
+  forceVerifyUser,
+  toggleSuspendUser,
+  getAllSessionsForAdmin
+} = require("../controllers/adminController");
 
-router.get("/users/search", adminController.searchUsers);
-router.get("/stats/users", adminController.getUserStats);
-router.get("/stats/games", adminController.getGameStats);
-router.get("/sessions/date-range", adminController.getSessionsByDateRange);
+// Users
+router.get("/users", authMiddleware, adminCheck, getAllUsersWithMatches);
+router.put("/users/:id", authMiddleware, adminCheck, updateUserByAdmin);
+router.delete("/users/:id", authMiddleware, adminCheck, deleteUserByAdmin);
+router.post("/users/:id/reset-stats", authMiddleware, adminCheck, resetUserStats);
+router.post("/users/:id/resend-verification", authMiddleware, adminCheck, resendVerificationAsAdmin);
+router.post("/users/:id/force-verify", authMiddleware, adminCheck, forceVerifyUser);
+router.post("/users/:id/toggle-suspend", authMiddleware, adminCheck, toggleSuspendUser);
 
-router.get("/users", adminController.getAllUsersWithMatches);
-router.put("/users/:id", adminController.updateUserByAdmin);
-router.delete("/users/:id", adminController.deleteUserByAdmin);
+// Games
+router.post("/games", authMiddleware, adminCheck, createGameByAdmin);
+router.put("/games/:id", authMiddleware, adminCheck, updateGameByAdmin);
+router.delete("/games/:id", authMiddleware, adminCheck, deleteGameByAdmin);
 
-router.post("/games", adminController.createGameByAdmin);
-router.put("/games/:id", adminController.updateGameByAdmin);
-router.delete("/games/:id", adminController.deleteGameByAdmin);
+// Sessions
+router.get("/sessions", authMiddleware, adminCheck, getAllSessionsForAdmin);
+router.put("/sessions/:id", authMiddleware, adminCheck, updateSessionByAdmin);
+router.delete("/sessions/:id", authMiddleware, adminCheck, deleteSessionByAdmin);
 
-router.put("/sessions/:id", adminController.updateSessionByAdmin);
-router.delete("/sessions/:id", adminController.deleteSessionByAdmin);
-
-router.put("/users/:id/reset-stats", adminCheck, adminController.resetUserStats);
-router.post("/users/:id/resend-verification", adminCheck, adminController.resendVerificationAsAdmin);
-router.get("/stats/matches", adminCheck, adminController.getMatchCountsGrouped);
-router.get("/stats/top-players", adminCheck, adminController.getTopPlayers);
-router.get("/stats/win-rates", adminCheck, adminController.getUserWinRates);
+// Analytics & Tools
+router.get("/search", authMiddleware, adminCheck, searchUsers);
+router.get("/stats/users", authMiddleware, adminCheck, getUserStats);
+router.get("/stats/games", authMiddleware, adminCheck, getGameStats);
+router.get("/sessions/range", authMiddleware, adminCheck, getSessionsByDateRange);
+router.get("/stats/match-counts", authMiddleware, adminCheck, getMatchCountsGrouped);
+router.get("/stats/top-players", authMiddleware, adminCheck, getTopPlayers);
+router.get("/stats/win-rates", authMiddleware, adminCheck, getUserWinRates);
 
 module.exports = router;

@@ -2,66 +2,33 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 const { friendRequestSchema } = require("./subdocuments/FriendRequestSchema");
 
-// Main user schema
 const userSchema = new mongoose.Schema({
-  firstName: {
-    type: String,
-    required: true
-  },
-  lastName: {
-    type: String,
-    required: true
-  },
-  email: {
-    type: String,
-    required: true,
-    unique: true
-  },
+  firstName: { type: String, required: true },
+  lastName: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
 
-  isEmailVerified: {
-  type: Boolean,
-  default: false
-  },
+  isEmailVerified: { type: Boolean, default: false },
+  resetPasswordToken: { type: String },
+  resetPasswordExpires: { type: Date },
 
-  resetPasswordToken: {
-  type: String,
-  },
-
-  resetPasswordExpires: {
-  type: Date,
-  },
-  
-  password: {
-    type: String // Required only if authProvider is 'local'
-  },
+  password: { type: String }, // Required only if authProvider is 'local'
   authProvider: {
     type: String,
     enum: ["local", "google", "facebook"],
     default: "local"
   },
-  profileIcon: {
-    type: String // DiceBear URL or frontend-generated
-  },
+  profileIcon: { type: String }, // DiceBear URL or frontend-generated
 
-  friends: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User"
-  }],
+  friends: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   friendRequests: [friendRequestSchema],
 
+  // NEW: Bookmarked games
+  favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: "Game" }],
+
   stats: {
-    wins: {
-      type: Number,
-      default: 0
-    },
-    losses: {
-      type: Number,
-      default: 0
-    },
-    mostPlayed: {
-      type: String,
-      default: ""
-    }
+    wins: { type: Number, default: 0 },
+    losses: { type: Number, default: 0 },
+    mostPlayed: { type: String, default: "" }
   },
 
   role: {
@@ -70,14 +37,7 @@ const userSchema = new mongoose.Schema({
     default: "user"
   },
 
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-
-  isSuspended: {
-  type: Boolean,
-  },
+  isSuspended: { type: Boolean, default: false },
 
   notifications: [
     {
@@ -86,36 +46,25 @@ const userSchema = new mongoose.Schema({
         enum: ["friend_request", "friend_accept", "info"],
         required: true
       },
-      from: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User"
-      },
+      from: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
       message: String,
       isRead: { type: Boolean, default: false },
       date: { type: Date, default: Date.now }
     }
   ],
 
-    activityLogs: [
+  activityLogs: [
     {
-      action: {
-        type: String,
-        required: true
-      },
-      metadata: {
-        type: mongoose.Schema.Types.Mixed
-      },
-      createdAt: {
-        type: Date,
-        default: Date.now
-      }
+      action: { type: String, required: true },
+      metadata: { type: mongoose.Schema.Types.Mixed },
+      createdAt: { type: Date, default: Date.now }
     }
   ],
 
-
+  createdAt: { type: Date, default: Date.now }
 });
 
-// Hash password before saving (only if local and changed)
+// Hash password before saving (local only)
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password") || this.authProvider !== "local") return next();
   try {
@@ -127,7 +76,7 @@ userSchema.pre("save", async function (next) {
   }
 });
 
-// Method to compare raw and hashed password
+// Compare hashed password
 userSchema.methods.comparePassword = function (candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
 };

@@ -19,7 +19,11 @@ async function sendEmail(to, subject, html) {
   };
 
   // Send the email
-  await transporter.sendMail(mailOptions);
+  try {
+  await transporter.sendMail(mailOptions);  
+  } catch (error) {
+  console.error("Email send failed:", error.message);
+  }
 }
 
 module.exports = sendEmail;

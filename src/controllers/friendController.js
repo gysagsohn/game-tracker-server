@@ -9,35 +9,25 @@ async function sendFriendRequest(req, res, next) {
     const { targetUserId } = req.body;
     const currentUserId = req.user.id;
 
-    // Prevent self-request
     if (currentUserId === targetUserId) {
       return res.status(400).json({ message: "You cannot send a friend request to yourself." });
     }
 
     const sender = await User.findById(currentUserId);
     const recipient = await User.findById(targetUserId);
-
     if (!recipient) return res.status(404).json({ message: "Target user not found." });
 
-    // Check for duplicate request or existing friendship
     const alreadyRequested = recipient.friendRequests.some(req =>
       req.user.toString() === currentUserId && req.status === "Pending"
     );
     const alreadyFriends = recipient.friends.includes(currentUserId);
 
-    if (alreadyRequested) {
-      return res.status(400).json({ message: "Friend request already sent." });
-    }
+    if (alreadyRequested) return res.status(400).json({ message: "Friend request already sent." });
+    if (alreadyFriends) return res.status(400).json({ message: "You are already friends." });
 
-    if (alreadyFriends) {
-      return res.status(400).json({ message: "You are already friends." });
-    }
-
-    // Add friend request to recipient
     recipient.friendRequests.push({ user: currentUserId, status: "Pending" });
     await recipient.save();
 
-    // Create in-app notification with clickable link
     await Notification.create({
       recipient: targetUserId,
       sender: currentUserId,
@@ -47,7 +37,6 @@ async function sendFriendRequest(req, res, next) {
 
     await logUserActivity(req.user._id, "Sent Friend Request", { to: recipient._id });
 
-    // Send email notification
     const html = `
       <p>Hi ${recipient.firstName},</p>
       <p><strong>${sender.firstName}</strong> sent you a friend request on Game Tracker.</p>
@@ -62,7 +51,7 @@ async function sendFriendRequest(req, res, next) {
   }
 }
 
-// Accept or reject friend request
+// Accept or reject a friend request
 async function respondToFriendRequest(req, res, next) {
   try {
     const { senderId, action } = req.body; // "Accepted" or "Rejected"
@@ -78,24 +67,29 @@ async function respondToFriendRequest(req, res, next) {
 
     request.status = action;
 
-    if (action === "Accepted") {
+  if (action === "Accepted") {
+    if (!user.friends.includes(senderId)) {
       user.friends.push(senderId);
-      sender.friends.push(currentUserId);
-      await sender.save();
-
-      // Notify sender
-      await Notification.create({
-        recipient: senderId,
-        type: "FriendAccepted",
-        message: `${user.firstName} ${user.lastName} accepted your friend request.`
-      });
-
-      await sendEmail(
-        sender.email,
-        "Friend Request Accepted – Game Tracker",
-        `<p>${user.firstName} ${user.lastName} accepted your friend request.</p>`
-      );
     }
+
+    if (!sender.friends.includes(currentUserId)) {
+      sender.friends.push(currentUserId);
+    }
+
+    await sender.save();
+
+    await Notification.create({
+      recipient: senderId,
+      type: "friend_accept",
+      message: `${user.firstName} ${user.lastName} accepted your friend request.`
+    });
+
+    await sendEmail(
+      sender.email,
+      "Friend Request Accepted – Game Tracker",
+      `<p>${user.firstName} ${user.lastName} accepted your friend request.</p>`
+    );
+  }
 
     await user.save();
 
@@ -105,7 +99,7 @@ async function respondToFriendRequest(req, res, next) {
   }
 }
 
-// Get current user's pending friend requests
+// Get your pending friend requests
 async function getPendingFriendRequests(req, res, next) {
   try {
     const user = await User.findById(req.user.id).populate("friendRequests.user", "firstName lastName email");
@@ -116,7 +110,7 @@ async function getPendingFriendRequests(req, res, next) {
   }
 }
 
-// Friend list
+// Get friend list
 async function getFriendList(req, res, next) {
   try {
     const user = await User.findById(req.params.id).populate("friends", "firstName lastName email");
@@ -132,8 +126,7 @@ async function getSuggestedFriends(req, res, next) {
     const user = await User.findById(req.user.id);
     const friends = await User.find({ _id: { $in: user.friends } });
 
-    let suggestions = new Set();
-
+    const suggestions = new Set();
     for (const friend of friends) {
       for (const f of friend.friends) {
         if (
@@ -152,7 +145,7 @@ async function getSuggestedFriends(req, res, next) {
   }
 }
 
-// Unfriend
+// Unfriend a user
 async function unfriendUser(req, res, next) {
   try {
     const { friendId } = req.body;
@@ -174,7 +167,7 @@ async function unfriendUser(req, res, next) {
   }
 }
 
-// Notifications list
+// Get notifications for current user
 async function getNotifications(req, res, next) {
   try {
     const notifications = await Notification.find({ recipient: req.user.id })
@@ -186,7 +179,7 @@ async function getNotifications(req, res, next) {
   }
 }
 
-// Mark notification as read
+// ✅ Mark notification as read
 async function markNotificationAsRead(req, res, next) {
   try {
     const notif = await Notification.findOneAndUpdate(
@@ -201,7 +194,7 @@ async function markNotificationAsRead(req, res, next) {
   }
 }
 
-// Mutual friends
+// Get mutual friends between current user and another user
 async function getMutualFriends(req, res, next) {
   try {
     const user = await User.findById(req.user.id);
