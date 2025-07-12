@@ -83,7 +83,7 @@ const userSchema = new mongoose.Schema({
     {
       type: {
         type: String,
-        enum: ["friend-request", "friend-accept", "info"],
+        enum: ["friend_request", "friend_accept", "info"],
         required: true
       },
       from: {

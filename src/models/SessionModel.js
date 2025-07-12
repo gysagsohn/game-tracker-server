@@ -6,7 +6,7 @@ const playerSchema = new mongoose.Schema({
     ref: "User",
     default: null // null for guest players
   },
-  
+
   name: {
     type: String,
     required: true
@@ -33,6 +33,10 @@ const playerSchema = new mongoose.Schema({
   invited: {
     type: Boolean,
     default: false
+  },
+
+  confirmedAt: {
+  type: Date
   }
 }, { _id: false });
 

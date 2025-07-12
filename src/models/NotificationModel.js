@@ -8,8 +8,8 @@ const notificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ["FriendRequest", "FriendAccepted"],
-    required: true
+    enum: ["friend_request", "friend_accept", "info"],
+    required: true,
   },
   message: String,
   link: String, // Optional: e.g. frontend route

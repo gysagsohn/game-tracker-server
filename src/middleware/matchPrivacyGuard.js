@@ -17,8 +17,8 @@ async function matchPrivacyGuard(req, res, next) {
       return res.status(404).json({ message: "Session not found" });
     }
 
-    const isPlayer = session.playedBy.some(
-      (id) => id.toString() === user._id.toString()
+    const isPlayer = session.players.some(
+      (p) => p.user && p.user.toString() === user._id.toString()
     );
 
     if (!isPlayer) {

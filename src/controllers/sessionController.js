@@ -115,10 +115,11 @@ async function confirmSession(req, res, next) {
     const userId = req.user._id.toString();
     let found = false;
 
-    // Update confirmed status for the current user
+    // Update confirmed status and timestamp
     session.players.forEach(player => {
       if (player.user && player.user.toString() === userId) {
         player.confirmed = true;
+        player.confirmedAt = new Date(); // ✅ New timestamp field
         found = true;
       }
     });
@@ -127,7 +128,7 @@ async function confirmSession(req, res, next) {
       return res.status(403).json({ message: "You are not a registered player in this match." });
     }
 
-    // Check if all registered users are now confirmed
+    // Check if all registered users are confirmed
     const anyUnconfirmed = session.players.some(
       p => p.user && p.confirmed === false
     );
@@ -136,8 +137,7 @@ async function confirmSession(req, res, next) {
 
     await session.save();
 
-	await logUserActivity(req.user._id, "Confirmed Match", { sessionId: session._id });
-
+    await logUserActivity(req.user._id, "Confirmed Match", { sessionId: session._id });
 
     res.json({ message: "Match confirmed", matchStatus: session.matchStatus });
   } catch (err) {
