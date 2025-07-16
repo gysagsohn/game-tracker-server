@@ -197,7 +197,7 @@ async function remindMatchConfirmation(req, res, next) {
   }
 }
 
-exports.getMyPendingSessions = async (req, res, next) => {
+async function getMyPendingSessions(req, res, next) {
   try {
     const sessions = await Session.find({
       "players.user": req.user.id,
@@ -208,7 +208,7 @@ exports.getMyPendingSessions = async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-};
+}
 
 module.exports = {
 	getAllSessions,
@@ -218,4 +218,5 @@ module.exports = {
 	createSession,
 	confirmSession,
 	remindMatchConfirmation,
+  getMyPendingSessions,
 };
