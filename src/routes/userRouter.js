@@ -5,6 +5,7 @@ const authMiddleware = require("../middleware/authMiddleware");
 const privacyGuard = require("../middleware/privacyGuard");
 
 
+
 router.get("/", authMiddleware, userController.getAllUsers);
 router.get("/:id/stats", authMiddleware, privacyGuard, userController.getUserStats);
 router.get("/:id", authMiddleware, privacyGuard, userController.getUserById);

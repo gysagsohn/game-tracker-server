@@ -78,5 +78,5 @@ module.exports = {
   getGameById,
   updateGame,
   deleteGame,
-  toggleGameLike // ✅ Ensure this is exported
+  toggleGameLike 
 };

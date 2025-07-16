@@ -4,12 +4,21 @@ This is the backend API for [Game Tracker](https://github.com/gysagsohn/game-tra
 
 The frontend repo can be found at [Frontend: game-tracker-client](https://github.com/gysagsohn/game-tracker-client)
 
+## Features
+
 - Track card and board game results
-- Log match scores (with guests)
+- Log match scores (including guest players)
 - Confirm match outcomes
 - View user stats and history
-- Send friend requests and get match invites
-- Create and manage games
+- Send and accept friend requests
+- Get match invites and notifications
+- Create, edit, and delete games
+- Bookmark games with a favorites system
+- View pending matches and resend reminders
+- Admin tools: user management, match editing, stats dashboard
+- Email verification, password reset, Google OAuth login
+- Suspended users are blocked from login and actions
+- Guest matches are auto-linked when users sign up
 
 This repo uses Express, MongoDB, and JWT-based authentication. Google OAuth, email verification, and email-based match invites are fully supported.
 
@@ -104,6 +113,7 @@ npm run dev
 | `isSuspended`    | Boolean      | If true, account is locked                                   |
 | `notifications`  | [Subdoc]     | Messages like friend requests or match invites               |
 | `createdAt`      | Date         | Timestamp — when account was created                         |
+| `favorites`       | [ObjectId]   | List of liked/bookmarked games                              |
 
 
 ### FriendRequest Subdocument
@@ -157,6 +167,7 @@ Either user or email+name must be present.
 | `minPlayers`     | Number   | Minimum required players                               |
 | `createdBy`      | ObjectId | Ref to user who created the game (if not default)      |
 | `isCustom`       | Boolean  | True if added by user, false if seeded by admin        |
+| `description`    | String   | Optional text description of the game                  |
 
 
 
@@ -238,17 +249,19 @@ Returns:
 
 ### `/games` – Game Routes
 
-| Method | Route            | Description                             |
-|--------|------------------|-----------------------------------------|
-| GET    | `/games`         | Get all games (default and user-added)  |
-| POST   | `/games`         | Add a new game                          |
-| PUT    | `/games/:id`     | Edit a game                             |
-| DELETE | `/games/:id`     | Delete a game                           |
+| Method | Route            | Description                                               |
+|--------|------------------|-----------------------------------------                  |
+| GET    | `/games`         | Get all games (default and user-added)                    |
+| POST   | `/games`         | Add a new game                                            |
+| PUT    | `/games/:id`     | Edit a game                                               |
+| DELETE | `/games/:id`     | Delete a game                                             |
+| POST   | `/games/:id/like`      | Add or remove a game from the user's favorites list |
 
 
 
 
-### `/matches` – Match Routes
+
+### `/session (matches)` – Match Routes
 
 | Method | Route                       | Description                                             |
 |--------|-----------------------------|---------------------------------------------------------|
@@ -258,6 +271,8 @@ Returns:
 | PUT    | `/sessions/:id`            | Edit a match (resets confirmation if not admin)          |
 | DELETE | `/sessions/:id`            | Delete a match                                           |
 | POST   | `/sessions/:id/confirm`    | Confirm your participation in a match                    |
+| GET    | `/sessions/my-pending`      | Get only matches where the user hasn’t confirmed yet     |
+
 
 
 
@@ -294,6 +309,14 @@ Protected by `authMiddleware` + `adminCheck`
 | GET    | `/admin/stats/users`             | Admin dashboard: user counts            |
 | GET    | `/admin/stats/games`             | Admin dashboard: most played games      |
 | GET    | `/admin/sessions/date-range`     | Get sessions within a specific date     |
+| POST   | `/admin/users/:id/reset-stats`      | Reset a user's win/loss stats               |
+| POST   | `/admin/users/:id/force-verify`     | Mark user as email verified (no email sent) |
+| POST   | `/admin/users/:id/toggle-suspend`   | Suspend or reactivate a user account        |
+| GET    | `/admin/sessions`                   | Get all sessions across all users           |
+| GET    | `/admin/stats/match-counts`         | Group match counts by week/month            |
+| GET    | `/admin/stats/top-players`          | Get top 10 users by total wins              |
+| GET    | `/admin/stats/win-rates`            | Get win rate % for all users                |
+
 
 
 
@@ -340,6 +363,12 @@ EMAIL_APP_PASSWORD=generated_app_password_or_sendgrid_key
 **Email Sending**
 
 - Development: Uses Gmail + App Password via Nodemailer
+
+## Email & Rate Limit Notes
+- Guest match invites are rate-limited: Max 3 emails per guest/day
+- Match reminders can only be resent once every 6 hours per match
+- Sensitive routes (login, signup, password reset) are protected with `express-rate-limit`
+
 
 **CORS Configuration**
 Update cors() config to allow your frontend domain (e.g., https://gametracker.com)

@@ -8,6 +8,6 @@ router.post("/", authMiddleware, gameController.createGame);
 router.get("/:id", gameController.getGameById); // public
 router.put("/:id", authMiddleware, gameController.updateGame);
 router.delete("/:id", authMiddleware, gameController.deleteGame);
-router.post("/:id/like", authMiddleware, gameController.toggleGameLike); // NEW
+router.post("/:id/like", authMiddleware, gameController.toggleGameLike); 
 
 module.exports = router;
