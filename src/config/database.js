@@ -3,7 +3,7 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 async function databaseConnect() {
-	const databaseURL = process.env.DATABASE_URL || "mongodb://localhost:27017/game-tracker-dev";
+	const databaseURL = process.env.DATABASE_URL;
 
 	try {
 		await mongoose.connect(databaseURL);

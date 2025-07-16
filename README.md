@@ -1,8 +1,26 @@
+<p align="center">
+  <a href="https://github.com/gysagsohn/game-tracker-server">
+    <img src="https://img.shields.io/github/stars/gysagsohn/game-tracker-server?style=social" alt="GitHub stars">
+  </a>
+  <a href="https://gy-gametracker.netlify.app">
+    <img src="https://img.shields.io/netlify/5e8a7452-b0cc-44b7-b637-1f0c32622d1f?label=Frontend%20Deploy&logo=netlify" alt="Netlify frontend">
+  </a>
+  <a href="https://game-tracker-server-zq2k.onrender.com">
+    <img src="https://img.shields.io/badge/Render-Backend-green?logo=render" alt="Render backend">
+  </a>
+  <img src="https://img.shields.io/badge/status-live-brightgreen" alt="App status">
+</p>
+
+
 # Game Tracker Backend – Express + MongoDB API
 
 This is the backend API for [Game Tracker](https://github.com/gysagsohn/game-tracker-client), a full-stack MERN application that allows friends to:
 
 The frontend repo can be found at [Frontend: game-tracker-client](https://github.com/gysagsohn/game-tracker-client)
+
+## Live Deployment
+- **Backend**: [https://game-tracker-server-zq2k.onrender.com](https://game-tracker-server-zq2k.onrender.com)
+- **Frontend**: [https://gy-gametracker.netlify.app](https://gy-gametracker.netlify.app)
 
 ## Features
 
@@ -64,7 +82,7 @@ npm install
 3. Create a .env file at the root with the following:
 
 ``` bash
-MONGO_URI=your_mongodb_connection_string
+DATABASE_URL=your_mongodb_connection_string
 JWT_SECRET=your_secret_key
 PORT=3001
 

@@ -11,8 +11,8 @@ function createToken(user) {
 // Helper: Send email verification link
 async function sendVerificationEmail(user) {
   const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
-  const verificationLink = `http://localhost:3000/verify-email?token=${token}`;
-  
+  const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
+
 
   const html = `
     <h2>Email Verification</h2>
@@ -143,7 +143,7 @@ async function forgotPassword(req, res, next) {
     const html = `
       <h2>Reset Your Password</h2>
       <p>Click below to reset your password:</p>
-      <a href="http://localhost:3000/reset-password?token=${token}">Reset Password</a>
+      <a href="${process.env.FRONTEND_URL}/reset-password?token=${token}">Reset Password</a>
     `;
 
     await sendEmail(user.email, "Reset your Game Tracker password", html);
