@@ -97,7 +97,7 @@ async function verifyEmail(req, res, next) {
     if (!token) return res.status(400).json({ message: "Token missing" });
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id);
+    const user = await User.findById(decoded.id).select("-password");
     if (!user) return res.status(404).json({ message: "User not found" });
 
     if (user.isEmailVerified) {
@@ -122,7 +122,7 @@ async function resendVerificationEmail(req, res, next) {
     if (user.isEmailVerified) return res.status(400).json({ message: "Email already verified." });
 
     await sendVerificationEmail(user);
-    res.json({ message: "Verification email resent." });
+    res.json({ message: "Verification email resent.", data: yourData});
   } catch (err) {
     next(err);
   }
@@ -147,7 +147,7 @@ async function forgotPassword(req, res, next) {
     `;
 
     await sendEmail(user.email, "Reset your Game Tracker password", html);
-    res.json({ message: "Reset link sent to your email." });
+    res.json({ message: "Reset link sent to your email.", data: yourData});
   } catch (err) {
     next(err);
   }
@@ -172,7 +172,7 @@ async function resetPassword(req, res, next) {
     user.resetPasswordExpires = undefined;
     await user.save();
 
-    res.json({ message: "Password has been reset." });
+    res.json({ message: "Password has been reset.", data: yourData});
   } catch (err) {
     next(err);
   }

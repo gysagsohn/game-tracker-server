@@ -4,32 +4,30 @@ const rateLimitCache = {};
 const logUserActivity = require("../utils/logActivity");
 const User = require("../models/UserModel");
 
+// GET /sessions
 async function getAllSessions(req, res, next) {
-	try {
+  try {
     const sessions = await Session.find({ "players.user": req.user._id }).populate("game players.user");
-		res.json(sessions);
-	} catch (err) {
-		next(err);
-	}
+    res.json({ message: "Fetched your sessions", data: sessions });
+  } catch (err) {
+    next(err);
+  }
 }
 
+// POST /sessions
 async function createSession(req, res, next) {
   try {
     const { game, players, notes, date } = req.body;
-
     if (!game || !players || players.length === 0) {
       return res.status(400).json({ message: "Game and players are required." });
     }
 
-    // Track if all registered players confirmed
     let allConfirmed = true;
 
     for (const player of players) {
-      // Guests: auto-confirm
       if (!player.user) {
         player.confirmed = true;
 
-        // Invite logic
         if (player.invited && player.email) {
           const key = `${player.email}_${new Date().toDateString()}`;
           const sentToday = rateLimitCache[key] || 0;
@@ -42,7 +40,6 @@ async function createSession(req, res, next) {
           }
         }
       } else {
-        // Registered users must manually confirm
         player.confirmed = false;
         allConfirmed = false;
       }
@@ -60,13 +57,13 @@ async function createSession(req, res, next) {
     });
 
     await session.save();
-    res.status(201).json(session);
+    res.status(201).json({ message: "Match created", data: session });
   } catch (err) {
     next(err);
   }
 }
 
-// Email sender for guest player invites
+// Helper
 async function sendGuestInviteEmail(email, name = "Player") {
   const html = `
     <h3>You’ve been invited to a game on Game Tracker!</h3>
@@ -74,39 +71,55 @@ async function sendGuestInviteEmail(email, name = "Player") {
     <p>You were added to a match as a guest. To track your own stats and matches, create an account below:</p>
     <a href="https://your-frontend.com/signup">Sign up and claim your games</a>
   `;
-
   await sendEmail(email, "Game Tracker Invite – Claim Your Games", html);
 }
 
-
+// GET /sessions/:id
 async function getSessionById(req, res, next) {
   try {
     const session = await Session.findById(req.params.id).populate("game players.user");
     if (!session) return res.status(404).json({ message: "Session not found" });
-    res.json(session);
+    res.json({ message: "Fetched session", data: session });
   } catch (err) {
     next(err);
   }
 }
 
+// PUT /sessions/:id
 async function updateSession(req, res, next) {
-	try {
-		const updated = await Session.findByIdAndUpdate(req.params.id, req.body, { new: true });
-		res.json(updated);
-	} catch (err) {
-		next(err);
-	}
+  try {
+    const session = await Session.findById(req.params.id);
+    if (!session) return res.status(404).json({ message: "Session not found." });
+
+    const { game, players, notes, date, matchStatus } = req.body;
+    if (game !== undefined) session.game = game;
+    if (players !== undefined) session.players = players;
+    if (notes !== undefined) session.notes = notes;
+    if (date !== undefined) session.date = date;
+    if (matchStatus !== undefined) session.matchStatus = matchStatus;
+
+    session.lastEditedBy = req.user._id;
+
+    await session.save();
+    await logUserActivity(req.user._id, "Updated Match", { sessionId: session._id });
+
+    res.json({ message: "Session updated", data: session });
+  } catch (err) {
+    next(err);
+  }
 }
 
+// DELETE /sessions/:id
 async function deleteSession(req, res, next) {
-	try {
-		await Session.findByIdAndDelete(req.params.id);
-		res.status(204).end();
-	} catch (err) {
-		next(err);
-	}
+  try {
+    await Session.findByIdAndDelete(req.params.id);
+    res.status(204).json({ message: "Session deleted", data: null });
+  } catch (err) {
+    next(err);
+  }
 }
 
+// PATCH /sessions/:id/confirm
 async function confirmSession(req, res, next) {
   try {
     const session = await Session.findById(req.params.id);
@@ -115,11 +128,10 @@ async function confirmSession(req, res, next) {
     const userId = req.user._id.toString();
     let found = false;
 
-    // Update confirmed status and timestamp
     session.players.forEach(player => {
       if (player.user && player.user.toString() === userId) {
         player.confirmed = true;
-        player.confirmedAt = new Date(); // ✅ New timestamp field
+        player.confirmedAt = new Date();
         found = true;
       }
     });
@@ -128,27 +140,22 @@ async function confirmSession(req, res, next) {
       return res.status(403).json({ message: "You are not a registered player in this match." });
     }
 
-    // Check if all registered users are confirmed
-    const anyUnconfirmed = session.players.some(
-      p => p.user && p.confirmed === false
-    );
-
+    const anyUnconfirmed = session.players.some(p => p.user && !p.confirmed);
     session.matchStatus = anyUnconfirmed ? "Pending" : "Confirmed";
 
     await session.save();
-
     await logUserActivity(req.user._id, "Confirmed Match", { sessionId: session._id });
 
-    res.json({ message: "Match confirmed", matchStatus: session.matchStatus });
+    res.json({ message: "Match confirmed", data: { matchStatus: session.matchStatus } });
   } catch (err) {
     next(err);
   }
 }
 
+// POST /sessions/:id/remind
 async function remindMatchConfirmation(req, res, next) {
   try {
     const session = await Session.findById(req.params.id).populate("players.user");
-
     if (!session) return res.status(404).json({ message: "Match not found" });
     if (session.matchStatus === "Confirmed") {
       return res.status(400).json({ message: "This match is already confirmed." });
@@ -161,7 +168,6 @@ async function remindMatchConfirmation(req, res, next) {
       return res.status(429).json({ message: "Reminder already sent recently. Try again later." });
     }
 
-    // Get unconfirmed registered players
     const unconfirmed = session.players.filter(
       p => p.user && !p.confirmed && p.user.email
     );
@@ -191,12 +197,13 @@ async function remindMatchConfirmation(req, res, next) {
       remindedCount: unconfirmed.length
     });
 
-    res.json({ message: "Reminder emails sent.", count: unconfirmed.length });
+    res.json({ message: "Reminder emails sent", data: { count: unconfirmed.length } });
   } catch (err) {
     next(err);
   }
 }
 
+// GET /sessions/pending
 async function getMyPendingSessions(req, res, next) {
   try {
     const sessions = await Session.find({
@@ -204,19 +211,19 @@ async function getMyPendingSessions(req, res, next) {
       "players.confirmed": false
     }).populate("game players.user");
 
-    res.json(sessions);
+    res.json({ message: "Fetched pending matches", data: sessions });
   } catch (err) {
     next(err);
   }
 }
 
 module.exports = {
-	getAllSessions,
-	getSessionById,
-	updateSession,
-	deleteSession,
-	createSession,
-	confirmSession,
-	remindMatchConfirmation,
-  getMyPendingSessions,
+  getAllSessions,
+  getSessionById,
+  updateSession,
+  deleteSession,
+  createSession,
+  confirmSession,
+  remindMatchConfirmation,
+  getMyPendingSessions
 };

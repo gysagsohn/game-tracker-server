@@ -1,10 +1,10 @@
 const Game = require("../models/GameModel");
-const User = require("../models/UserModel"); // ✅ Required for toggleGameLike
+const User = require("../models/UserModel");
 
 async function getAllGames(req, res, next) {
   try {
     const games = await Game.find();
-    res.json(games);
+    res.json({ message: "All games fetched", data: games });
   } catch (err) {
     next(err);
   }
@@ -14,7 +14,7 @@ async function createGame(req, res, next) {
   try {
     const newGame = new Game(req.body);
     await newGame.save();
-    res.status(201).json(newGame);
+    res.status(201).json({ message: "Game created", data: newGame });
   } catch (err) {
     next(err);
   }
@@ -24,7 +24,7 @@ async function getGameById(req, res, next) {
   try {
     const game = await Game.findById(req.params.id);
     if (!game) return res.status(404).json({ message: "Game not found" });
-    res.json(game);
+    res.json({ message: "Game fetched", data: game });
   } catch (err) {
     next(err);
   }
@@ -33,7 +33,7 @@ async function getGameById(req, res, next) {
 async function updateGame(req, res, next) {
   try {
     const updated = await Game.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    res.json(updated);
+    res.json({ message: "Game updated", data: updated });
   } catch (err) {
     next(err);
   }
@@ -52,20 +52,17 @@ async function toggleGameLike(req, res, next) {
   try {
     const user = await User.findById(req.user.id);
     const gameId = req.params.id;
-
     if (!user) return res.status(404).json({ message: "User not found." });
 
     const alreadyLiked = user.favorites?.some(id => id.toString() === gameId);
-
     user.favorites = alreadyLiked
       ? user.favorites.filter(id => id.toString() !== gameId)
       : [...(user.favorites || []), gameId];
 
     await user.save();
     res.json({
-      message: alreadyLiked
-        ? "Game removed from favorites"
-        : "Game added to favorites"
+      message: alreadyLiked ? "Game removed from favorites" : "Game added to favorites",
+      data: user.favorites
     });
   } catch (err) {
     next(err);
@@ -78,5 +75,5 @@ module.exports = {
   getGameById,
   updateGame,
   deleteGame,
-  toggleGameLike 
+  toggleGameLike
 };

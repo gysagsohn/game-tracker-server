@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
+const NotificationTypes = require("../constants/notificationTypes");
 
-const notificationSchema = new mongoose.Schema({
+const NotificationSchema = new mongoose.Schema({
   recipient: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
@@ -8,11 +9,16 @@ const notificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ["friend_request", "friend_accept", "info"],
-    required: true,
+    enum: Object.values(NotificationTypes),
+    required: true
   },
-  message: String,
-  link: String, // Optional: e.g. frontend route
+  message: {
+    type: String,
+    required: true
+  },
+  link: {
+    type: String
+  },
   isRead: {
     type: Boolean,
     default: false
@@ -23,5 +29,5 @@ const notificationSchema = new mongoose.Schema({
   }
 });
 
-const Notification = mongoose.model("Notification", notificationSchema);
+const Notification = mongoose.model("Notification", NotificationSchema);
 module.exports = Notification;

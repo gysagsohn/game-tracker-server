@@ -1,5 +1,6 @@
 const User = require("../models/UserModel");
 const Notification = require("../models/NotificationModel");
+const NotificationTypes = require("../constants/notificationTypes");
 const sendEmail = require("../utils/sendEmail");
 const logUserActivity = require("../utils/logActivity");
 
@@ -31,7 +32,7 @@ async function sendFriendRequest(req, res, next) {
     await Notification.create({
       recipient: targetUserId,
       sender: currentUserId,
-      type: "friend_request",
+      type: NotificationTypes.FRIEND_REQUEST,
       message: `${sender.firstName} sent you a friend request. <a href="https://your-frontend.com/friends/requests">View</a>`
     });
 
@@ -45,7 +46,7 @@ async function sendFriendRequest(req, res, next) {
 
     await sendEmail(recipient.email, "New Friend Request – Game Tracker", html);
 
-    res.json({ message: "Friend request sent." });
+    res.json({ message: "Friend request sent.", data: yourData});
   } catch (err) {
     next(err);
   }
@@ -67,29 +68,33 @@ async function respondToFriendRequest(req, res, next) {
 
     request.status = action;
 
-  if (action === "Accepted") {
-    if (!user.friends.includes(senderId)) {
-      user.friends.push(senderId);
+    if (action === "Accepted") {
+      if (!user.friends.includes(senderId)) {
+        user.friends.push(senderId);
+      }
+
+      if (!sender.friends.includes(currentUserId)) {
+        sender.friends.push(currentUserId);
+      }
+
+      await sender.save();
+
+      await Notification.create({
+        recipient: senderId,
+        type: NotificationTypes.FRIEND_ACCEPT,
+        message: `${user.firstName} ${user.lastName} accepted your friend request.`
+      });
+
+      try {
+        await sendEmail(
+          sender.email,
+          "Friend Request Accepted – Game Tracker",
+          `<p>${user.firstName} ${user.lastName} accepted your friend request.</p>`
+        );
+      } catch (emailErr) {
+        console.error("Failed to send friend accept email:", emailErr.message);
+      }
     }
-
-    if (!sender.friends.includes(currentUserId)) {
-      sender.friends.push(currentUserId);
-    }
-
-    await sender.save();
-
-    await Notification.create({
-      recipient: senderId,
-      type: "friend_accept",
-      message: `${user.firstName} ${user.lastName} accepted your friend request.`
-    });
-
-    await sendEmail(
-      sender.email,
-      "Friend Request Accepted – Game Tracker",
-      `<p>${user.firstName} ${user.lastName} accepted your friend request.</p>`
-    );
-  }
 
     await user.save();
 
@@ -179,7 +184,7 @@ async function getNotifications(req, res, next) {
   }
 }
 
-// ✅ Mark notification as read
+// Mark notification as read
 async function markNotificationAsRead(req, res, next) {
   try {
     const notif = await Notification.findOneAndUpdate(

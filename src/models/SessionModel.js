@@ -73,6 +73,12 @@ const sessionSchema = new mongoose.Schema({
   default: null
   },
 
+  lastEditedBy: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "User",
+  default: null
+  },
+
 }, {
   timestamps: true
 });
