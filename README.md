@@ -40,10 +40,18 @@ The frontend repo can be found at [Frontend: game-tracker-client](https://github
 
 This repo uses Express, MongoDB, and JWT-based authentication. Google OAuth, email verification, and email-based match invites are fully supported.
 
+The backend includes several maintainability and audit upgrades:
+
+- All controller responses follow { message, data } format for frontend consistency
+- Match edits now track the editor via lastEditedBy
+- Email failures (e.g., on friend accept) are logged for visibility
+- Guest player sync and invite system with basic email rate limiting
+- Notification type enums are synced across models
+
 
 ## Tech Stack
 
-- Backend: Node.js, Express, MongoDB + Mongoose
+- Backend: Node.js, Express, MongoDB + Mongoose, Nodemailer
 - Auth: JWT, Google OAuth via Passport
 - Security: bcrypt, role-based auth, privacy guards
 - Email: Nodemailer + Gmail App Password
@@ -115,23 +123,25 @@ npm run dev
 
 ### User Model
 
-| Field            | Type         | Description                                                  |
-|------------------|--------------|--------------------------------------------------------------|
-| `firstName`      | String       | Required                                                     |
-| `lastName`       | String       | Required                                                     |
-| `email`          | String       | Required, unique — used for login                            |
-| `password`       | String       | Required unless using OAuth                                  |
-| `authProvider`   | String       | `"local"` \| `"google"` \| `"facebook"`                      |
-| `profileIcon`    | String       | DiceBear URL based on user name/email                        |
-| `friends`        | [ObjectId]   | Array of User IDs — connected friends                        |
-| `friendRequests` | [Subdoc]     | List of friend request objects with status                   |
-| `stats`          | Object       | `{ wins: Number, losses: Number, mostPlayed: String }`       |
-| `role`           | String       | `"user"` or `"admin"`                                        |
-| `isEmailVerified`| Boolean      | Email must be verified to log in                             |
-| `isSuspended`    | Boolean      | If true, account is locked                                   |
-| `notifications`  | [Subdoc]     | Messages like friend requests or match invites               |
-| `createdAt`      | Date         | Timestamp — when account was created                         |
-| `favorites`       | [ObjectId]   | List of liked/bookmarked games                              |
+| Field                  | Type         | Description                                                  |
+|------------------------|--------------|--------------------------------------------------------------|
+| `firstName`            | String       | Required                                                     |
+| `lastName`             | String       | Required                                                     |
+| `email`                | String       | Required, unique — used for login                            |
+| `password`             | String       | Required unless using OAuth                                  |
+| `resetPasswordToken`   | String       | Token for password reset flow                                |
+| `resetPasswordExpires` | Date         | Expiration time for password reset token                     |
+| `authProvider`         | String       | `"local"` \| `"google"` \| `"facebook"`                      |
+| `profileIcon`          | String       | DiceBear URL based on user name/email                        |
+| `friends`              | [ObjectId]   | Array of User IDs — connected friends                        |
+| `friendRequests`       | [Subdoc]     | List of friend request objects with status                   |
+| `stats`                | Object       | `{ wins: Number, losses: Number, mostPlayed: String }`       |
+| `role`                 | String       | `"user"` or `"admin"`                                        |
+| `isEmailVerified`      | Boolean      | Email must be verified to log in                             |
+| `isSuspended`          | Boolean      | If true, account is locked                                   |
+| `notifications`        | [Subdoc]     | Messages like friend requests or match invites               |
+| `createdAt`            | Date         | Timestamp — when account was created                         |
+| `favorites`            | [ObjectId]   | List of liked/bookmarked games                               |
 
 
 ### FriendRequest Subdocument
@@ -146,29 +156,32 @@ npm run dev
 
 ### Session (Match) Model
 
-| Field         | Type         | Description                                              |
-|---------------|--------------|----------------------------------------------------------|
-| `game`        | ObjectId     | Ref to Game document                                     |
-| `players`     | [Subdoc]     | Array of embedded player results                         |
-| `notes`       | String       | Optional text notes about the match                      |
-| `matchStatus` | String       | `"Pending"` \| `"Confirmed"` — based on player confirms  |
-| `createdBy`   | ObjectId     | Ref to the user who logged the match                     |
-| `date`        | Date         | Date the match was played                                |
-| `createdAt`   | Date         | Automatically added by Mongoose                          |
-| `updatedAt`   | Date         | Automatically updated on match edits                     |
+| Field              | Type         | Description                                              |
+|--------------------|--------------|----------------------------------------------------------|
+| `game`             | ObjectId     | Ref to Game document                                     |
+| `players`          | [Subdoc]     | Array of embedded player results                         |
+| `notes`            | String       | Optional text notes about the match                      |
+| `matchStatus`      | String       | `"Pending"` \| `"Confirmed"` — based on player confirms  |
+| `createdBy`        | ObjectId     | Ref to the user who logged the match                     |
+| `date`             | Date         | Date the match was played                                |
+| `createdAt`        | Date         | Automatically added by Mongoose                          |
+| `updatedAt`        | Date         | Automatically updated on match edits                     |
+| `lastReminderSent` | Date         | Timestamp of last match reminder sent                    |
+| `lastEditedBy`     | ObjectId     | Ref to user who last edited the match                    |
 
-#### Players Subdoc
+#### Players Subdocument
 
 
-| Field       | Type       | Description                                                |
-|-------------|------------|------------------------------------------------------------|
-| `user`      | ObjectId   | Ref to registered User — `null` for guests                 |
-| `name`      | String     | Required for all players (used for guests)                 |
-| `email`     | String     | Optional — guest invite and account sync                   |
-| `score`     | Number     | Numeric score or rank                                      |
-| `result`    | String     | `"Win"` \| `"Loss"` \| `"Draw"`                            |
-| `confirmed` | Boolean    | True if player has confirmed result                        |
-| `invited`   | Boolean    | True if invite email was sent to guest  
+| Field         | Type       | Description                                                |
+|---------------|------------|------------------------------------------------------------|
+| `user`        | ObjectId   | Ref to registered User — `null` for guests                 |
+| `name`        | String     | Required for all players (used for guests)                 |
+| `email`       | String     | Optional — guest invite and account sync                   |
+| `score`       | Number     | Numeric score or rank                                      |
+| `result`      | String     | `"Win"` \| `"Loss"` \| `"Draw"`                            |
+| `confirmed`   | Boolean    | True if player has confirmed result                        |
+| `confirmedAt` | Date       | Timestamp of when user confirmed the match (optional)      |
+| `invited`     | Boolean    | True if invite email was sent to guest                     |
 
 
 Either user or email+name must be present.
@@ -199,14 +212,14 @@ If a player's email is entered (instead of a user ID), an invite will be sent vi
 
 ## Notification Model
 
-| Field       | Type       | Description                                               |
-|-------------|------------|-----------------------------------------------------------|
-| `recipient` | ObjectId   | Ref to the user receiving the notification               |
-| `type`      | String     | `"FriendRequest"` \| `"FriendAccepted"`                  |
-| `message`   | String     | Optional message body                                    |
-| `link`      | String     | Optional frontend link (e.g., `/match/:id`)              |
-| `isRead`    | Boolean    | True if the notification has been viewed                 |
-| `createdAt` | Date       | Timestamp                                                 |
+| Field       | Type       | Description                                                                      |
+|-------------|------------|----------------------------------------------------------------------------------|
+| `recipient` | ObjectId   | Ref to the user receiving the notification                                       |
+| `type`      | String     | One of: `"FriendRequest"`, `"FriendAccepted"`, `"MatchInvite"`, `"MatchReminder" |
+| `message`   | String     | Optional message body                                                            |
+| `link`      | String     | Optional frontend link (e.g., `/match/:id`)                                      |
+| `isRead`    | Boolean    | True if the notification has been viewed                                         |
+| `createdAt` | Date       | Timestamp                                                                        |
 
 
 ## Guest Player Sync
@@ -233,25 +246,23 @@ Returns:
 | `privacyGuard`           | Allows users to access only their own data (e.g., `/users/:id`)         |
 | `matchPrivacyGuard`      | Allows access to a match only if the user is a registered player        |
 | `rateLimiter`            | Limits the number of requests (e.g., max 5 login/signup attempts)       |
+| `matchPrivacyGuard`      | Ensures only players in a match can access/edit it                      |
 
 
-## Planned API Routes (MVP)
-
+##  API Routes
 
 ### `/auth` – Auth Routes
 
-| Method | Route                       | Description                                        |
-|--------|-----------------------------|----------------------------------------------------|
-| POST   | `/auth/signup`              | Create a new user account                          |
-| POST   | `/auth/login`               | Log in a user and return JWT                       |
-| GET    | `/auth/google`              | Begin Google OAuth flow                            |
-| GET    | `/auth/facebook`            | Begin Facebook OAuth flow                          |
-| GET    | `/auth/verify-email`        | Verify email via token link                        |
-| POST   | `/auth/resend-verification-email` | Resend email verification link               |
-| POST   | `/auth/forgot-password`     | Send password reset link                           |
-| POST   | `/auth/reset-password`      | Reset user password via token                      |
-
-
+| Method | Route                               | Description                                       |
+|--------|--------------------------------------|--------------------------------------------------|
+| POST   | /auth/signup                         | Create a new user account                        |
+| POST   | /auth/login                          | Log in a user and return JWT                     |
+| GET    | /auth/google                         | Begin Google OAuth flow                          |
+| GET    | /auth/facebook                       | Begin Facebook OAuth flow                        |
+| GET    | /auth/verify-email                   | Verify email via token link                      |
+| POST   | /auth/resend-verification-email      | Resend email verification link                   |
+| POST   | /auth/forgot-password                | Send password reset link                         |
+| POST   | /auth/reset-password                 | Reset user password via token                    |
 
 
 ### `/users` – User Routes
@@ -263,6 +274,7 @@ Returns:
 | PUT    | `/users/:id`           | Update user profile                         |
 | DELETE | `/users/:id`           | Delete user (self or admin)                 |
 | GET    | `/users/:id/stats`     | Get match statistics for a user             |
+| GET    | `/users/me`            | Get profile of logged-in user               |
 
 
 ### `/games` – Game Routes
@@ -276,20 +288,19 @@ Returns:
 | POST   | `/games/:id/like`      | Add or remove a game from the user's favorites list |
 
 
-
-
-
 ### `/session (matches)` – Match Routes
 
-| Method | Route                       | Description                                             |
-|--------|-----------------------------|---------------------------------------------------------|
-| GET    | `/sessions`                 | Get all matches the user is part of                     |
-| POST   | `/sessions`                 | Create a new match (can include guest players)          |
-| GET    | `/sessions/:id`            | Get details of a specific match                          |
-| PUT    | `/sessions/:id`            | Edit a match (resets confirmation if not admin)          |
-| DELETE | `/sessions/:id`            | Delete a match                                           |
-| POST   | `/sessions/:id/confirm`    | Confirm your participation in a match                    |
-| GET    | `/sessions/my-pending`      | Get only matches where the user hasn’t confirmed yet     |
+| Method | Route                     | Description                                               |
+|--------|---------------------------|-----------------------------------------------------------|
+| GET    | /sessions                 | Get all matches the user is part of                       |
+| POST   | /sessions                 | Create a new match (can include guest players)            |
+| GET    | /sessions/:id            | Get details of a specific match                            |
+| PUT    | /sessions/:id            | Edit a match (resets confirmation if not admin)            |
+| DELETE | /sessions/:id            | Delete a match                                             |
+| POST   | /sessions/:id/confirm    | Confirm your participation in a match                      |
+| GET    | /sessions/my-pending     | Get matches where the user hasn’t confirmed yet            |
+| POST   | /sessions/:id/remind     | Send confirmation reminders to unconfirmed participants    |
+
 
 
 
@@ -312,30 +323,27 @@ Returns:
 
 Protected by `authMiddleware` + `adminCheck`
 
-
-| Method | Route                            | Description                             |
-|--------|----------------------------------|-----------------------------------------|
-| GET    | `/admin/users`                   | List all users                          |
-| PUT    | `/admin/users/:id`               | Update any user                         |
-| DELETE | `/admin/users/:id`               | Delete any user                         |
-| POST   | `/admin/games`                   | Add a game as admin                     |
-| PUT    | `/admin/games/:id`               | Edit any game                           |
-| DELETE | `/admin/games/:id`               | Delete any game                         |
-| PUT    | `/admin/sessions/:id`            | Admin edit of any session               |
-| DELETE | `/admin/sessions/:id`            | Admin delete of any session             |
-| GET    | `/admin/users/search`            | Search for users by name/email          |
-| GET    | `/admin/stats/users`             | Admin dashboard: user counts            |
-| GET    | `/admin/stats/games`             | Admin dashboard: most played games      |
-| GET    | `/admin/sessions/date-range`     | Get sessions within a specific date     |
-| POST   | `/admin/users/:id/reset-stats`      | Reset a user's win/loss stats               |
-| POST   | `/admin/users/:id/force-verify`     | Mark user as email verified (no email sent) |
-| POST   | `/admin/users/:id/toggle-suspend`   | Suspend or reactivate a user account        |
-| GET    | `/admin/sessions`                   | Get all sessions across all users           |
-| GET    | `/admin/stats/match-counts`         | Group match counts by week/month            |
-| GET    | `/admin/stats/top-players`          | Get top 10 users by total wins              |
-| GET    | `/admin/stats/win-rates`            | Get win rate % for all users                |
-
-
+|| Method | Route                                   | Description                                       |
+|--------|------------------------------------------|---------------------------------------------------|
+| GET    | /admin/users                             | List all users                                    |
+| PUT    | /admin/users/:id                         | Update any user                                   |
+| DELETE | /admin/users/:id                         | Delete any user                                   |
+| POST   | /admin/users/:id/reset-stats             | Reset a user's win/loss stats                     |
+| POST   | /admin/users/:id/force-verify            | Mark user as email verified                       |
+| POST   | /admin/users/:id/toggle-suspend          | Suspend or reactivate a user account              |
+| GET    | /admin/users/search                      | Search users by name/email                        |
+| POST   | /admin/games                             | Add a game as admin                               |
+| PUT    | /admin/games/:id                         | Edit any game                                     |
+| DELETE | /admin/games/:id                         | Delete any game                                   |
+| PUT    | /admin/sessions/:id                      | Admin edit of any session                         |
+| DELETE | /admin/sessions/:id                      | Admin delete of any session                       |
+| GET    | /admin/sessions                          | Get all sessions across all users                 |
+| GET    | /admin/sessions/date-range               | Get sessions within a specific date               |
+| GET    | /admin/stats/users                       | Admin dashboard: user counts                      |
+| GET    | /admin/stats/games                       | Admin dashboard: most played games                |
+| GET    | /admin/stats/match-counts                | Group match counts by week or month               |
+| GET    | /admin/stats/top-players                 | Get top 10 users by total wins                    |
+| GET    | /admin/stats/win-rates                   | Get win rate % for all users                      |
 
 
 ##  Seeding Strategy
