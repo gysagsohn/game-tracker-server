@@ -26,6 +26,7 @@ async function createSession(req, res, next) {
 
     for (const player of players) {
       if (!player.user) {
+        // Guest players are auto-confirmed
         player.confirmed = true;
 
         if (player.invited && player.email) {
@@ -39,7 +40,12 @@ async function createSession(req, res, next) {
             console.log(`Invite limit reached for ${player.email}`);
           }
         }
+
+      } else if (player.user.toString() === req.user._id.toString()) {
+        // Match creator → auto-confirm yourself
+        player.confirmed = true;
       } else {
+        // Other registered players must confirm manually
         player.confirmed = false;
         allConfirmed = false;
       }
@@ -62,7 +68,6 @@ async function createSession(req, res, next) {
     next(err);
   }
 }
-
 // Helper
 async function sendGuestInviteEmail(email, name = "Player") {
   const html = `
