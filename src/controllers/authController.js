@@ -122,7 +122,7 @@ async function resendVerificationEmail(req, res, next) {
     if (user.isEmailVerified) return res.status(400).json({ message: "Email already verified." });
 
     await sendVerificationEmail(user);
-    res.json({ message: "Verification email resent.", data: yourData});
+    res.json({ message: "Verification email resent.", data: user});
   } catch (err) {
     next(err);
   }
@@ -147,7 +147,7 @@ async function forgotPassword(req, res, next) {
     `;
 
     await sendEmail(user.email, "Reset your Game Tracker password", html);
-    res.json({ message: "Reset link sent to your email.", data: yourData});
+    res.json({ message: "Reset link sent to your email.", data: user});
   } catch (err) {
     next(err);
   }
@@ -172,7 +172,7 @@ async function resetPassword(req, res, next) {
     user.resetPasswordExpires = undefined;
     await user.save();
 
-    res.json({ message: "Password has been reset.", data: yourData});
+    res.json({ message: "Password has been reset."});
   } catch (err) {
     next(err);
   }
