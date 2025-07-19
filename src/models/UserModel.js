@@ -40,23 +40,19 @@ const userSchema = new mongoose.Schema({
 
   isSuspended: { type: Boolean, default: false },
 
-notifications: [{
-  type: {
-    type: String,
-    enum: Object.values(NotificationTypes),
-    required: true
-  },
-  message: String,
-  link: String,
-  isRead: {
-    type: Boolean,
-    default: false
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  }
-}],
+  notifications: [
+    {
+      type: {
+        type: String,
+        enum: Object.values(NotificationTypes), // synced with NotificationModel
+        required: true
+      },
+      from: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      message: String,
+      isRead: { type: Boolean, default: false },
+      date: { type: Date, default: Date.now }
+    }
+  ],
 
   activityLogs: [
     {

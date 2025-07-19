@@ -50,16 +50,17 @@ const logUserActivity = require("../utils/logActivity");
       try {
         await sendEmail(recipient.email, "New Friend Request – Game Tracker", html);
       } catch (emailErr) {
-        console.warn("📧 Friend email failed:", emailErr.message);
+        console.warn("Friend email failed:", emailErr.message);
       }
 
-      res.json({ message: "Friend request sent." });
+      res.json({ message: "Friend request sent.", data: { to: recipient._id } });
     } catch (err) {
       next(err);
     }
   }
 
 
+// Accept or reject a friend request
 // Accept or reject a friend request
 async function respondToFriendRequest(req, res, next) {
   try {
@@ -77,14 +78,8 @@ async function respondToFriendRequest(req, res, next) {
     request.status = action;
 
     if (action === "Accepted") {
-      if (!user.friends.includes(senderId)) {
-        user.friends.push(senderId);
-      }
-
-      if (!sender.friends.includes(currentUserId)) {
-        sender.friends.push(currentUserId);
-      }
-
+      if (!user.friends.includes(senderId)) user.friends.push(senderId);
+      if (!sender.friends.includes(currentUserId)) sender.friends.push(currentUserId);
       await sender.save();
 
       await Notification.create({
@@ -106,7 +101,10 @@ async function respondToFriendRequest(req, res, next) {
 
     await user.save();
 
-    res.json({ message: `Friend request ${action.toLowerCase()}.`, data: yourData });
+    res.json({
+      message: `Friend request ${action.toLowerCase()}.`,
+      data: { friendId: senderId, status: action }
+    });
   } catch (err) {
     next(err);
   }
@@ -115,9 +113,15 @@ async function respondToFriendRequest(req, res, next) {
 // Get your pending friend requests
 async function getPendingFriendRequests(req, res, next) {
   try {
-    const user = await User.findById(req.user.id).populate("friendRequests.user", "firstName lastName email");
+    const user = await User.findById(req.user.id)
+      .populate("friendRequests.user", "firstName lastName email");
+
     const pending = user.friendRequests.filter(fr => fr.status === "Pending");
-    res.json(pending);
+
+    res.json({
+      message: "Fetched pending friend requests",
+      data: pending
+    });
   } catch (err) {
     next(err);
   }
@@ -127,7 +131,7 @@ async function getPendingFriendRequests(req, res, next) {
 async function getFriendList(req, res, next) {
   try {
     const user = await User.findById(req.params.id).populate("friends", "firstName lastName email");
-    res.json(user.friends);
+    res.json({ message: "Fetched friend list", data: user.friends });
   } catch (err) {
     next(err);
   }
@@ -152,7 +156,7 @@ async function getSuggestedFriends(req, res, next) {
     }
 
     const suggestedUsers = await User.find({ _id: { $in: [...suggestions] } }).select("firstName lastName email");
-    res.json(suggestedUsers);
+    res.json({ message: "Suggested friends fetched", data: suggestedUsers });
   } catch (err) {
     next(err);
   }
@@ -174,7 +178,7 @@ async function unfriendUser(req, res, next) {
     await user.save();
     await friend.save();
 
-    res.json({ message: "Unfriended successfully.", data: yourData});
+    res.json({ message: "Unfriended successfully.", data: { friendId } });
   } catch (err) {
     next(err);
   }
@@ -186,7 +190,7 @@ async function getNotifications(req, res, next) {
     const notifications = await Notification.find({ recipient: req.user.id })
       .sort({ createdAt: -1 })
       .limit(20);
-    res.json(notifications);
+    res.json({ message: "Fetched notifications", data: notifications });
   } catch (err) {
     next(err);
   }
@@ -195,17 +199,18 @@ async function getNotifications(req, res, next) {
 // Mark notification as read
 async function markNotificationAsRead(req, res, next) {
   try {
-    const notif = await Notification.findOneAndUpdate(
+    const notification = await Notification.findOneAndUpdate(
       { _id: req.params.id, recipient: req.user.id },
       { isRead: true },
       { new: true }
     );
-    if (!notif) return res.status(404).json({ message: "Notification not found" });
-    res.json(notif);
+    if (!notification) return res.status(404).json({ message: "Notification not found" });
+    res.json({ message: "Notification marked as read", data: notification });
   } catch (err) {
     next(err);
   }
 }
+
 
 // Get mutual friends between current user and another user
 async function getMutualFriends(req, res, next) {
@@ -219,7 +224,7 @@ async function getMutualFriends(req, res, next) {
     );
 
     const mutualFriends = await User.find({ _id: { $in: mutual } }).select("firstName lastName email");
-    res.json(mutualFriends);
+    res.json({ message: "Fetched mutual friends", data: mutualFriends });
   } catch (err) {
     next(err);
   }
