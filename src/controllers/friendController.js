@@ -5,52 +5,60 @@ const sendEmail = require("../utils/sendEmail");
 const logUserActivity = require("../utils/logActivity");
 
 // Send a friend request
-async function sendFriendRequest(req, res, next) {
-  try {
-    const { targetUserId } = req.body;
-    const currentUserId = req.user.id;
+  async function sendFriendRequest(req, res, next) {
+    try {
+      const { email } = req.body;
+      const currentUserId = req.user.id;
 
-    if (currentUserId === targetUserId) {
-      return res.status(400).json({ message: "You cannot send a friend request to yourself." });
+      const sender = await User.findById(currentUserId);
+      const recipient = await User.findOne({ email });
+
+      if (!recipient) return res.status(404).json({ message: "Target user not found." });
+      if (recipient._id.equals(sender._id)) {
+        return res.status(400).json({ message: "You cannot send a friend request to yourself." });
+      }
+
+      const alreadyRequested = recipient.friendRequests.some(req =>
+        req.user.toString() === currentUserId && req.status === "Pending"
+      );
+      const alreadyFriends = recipient.friends.includes(currentUserId);
+
+      if (alreadyRequested) return res.status(400).json({ message: "Friend request already sent." });
+      if (alreadyFriends) return res.status(400).json({ message: "You are already friends." });
+
+      // Add friend request
+      recipient.friendRequests.push({ user: currentUserId, status: "Pending" });
+      await recipient.save();
+
+      // Log + notify
+      await Notification.create({
+        recipient: recipient._id,
+        sender: currentUserId,
+        type: NotificationTypes.FRIEND_REQUEST,
+        message: `${sender.firstName} sent you a friend request. <a href="https://your-frontend.com/friends/requests">View</a>`
+      });
+
+      await logUserActivity(currentUserId, "Sent Friend Request", { to: recipient._id });
+
+      // Try sending email
+      const html = `
+        <p>Hi ${recipient.firstName},</p>
+        <p><strong>${sender.firstName}</strong> sent you a friend request on Game Tracker.</p>
+        <p><a href="https://your-frontend.com/friends/requests">Click here to view and respond</a>.</p>
+      `;
+
+      try {
+        await sendEmail(recipient.email, "New Friend Request – Game Tracker", html);
+      } catch (emailErr) {
+        console.warn("📧 Friend email failed:", emailErr.message);
+      }
+
+      res.json({ message: "Friend request sent." });
+    } catch (err) {
+      next(err);
     }
-
-    const sender = await User.findById(currentUserId);
-    const recipient = await User.findById(targetUserId);
-    if (!recipient) return res.status(404).json({ message: "Target user not found." });
-
-    const alreadyRequested = recipient.friendRequests.some(req =>
-      req.user.toString() === currentUserId && req.status === "Pending"
-    );
-    const alreadyFriends = recipient.friends.includes(currentUserId);
-
-    if (alreadyRequested) return res.status(400).json({ message: "Friend request already sent." });
-    if (alreadyFriends) return res.status(400).json({ message: "You are already friends." });
-
-    recipient.friendRequests.push({ user: currentUserId, status: "Pending" });
-    await recipient.save();
-
-    await Notification.create({
-      recipient: targetUserId,
-      sender: currentUserId,
-      type: NotificationTypes.FRIEND_REQUEST,
-      message: `${sender.firstName} sent you a friend request. <a href="https://your-frontend.com/friends/requests">View</a>`
-    });
-
-    await logUserActivity(req.user._id, "Sent Friend Request", { to: recipient._id });
-
-    const html = `
-      <p>Hi ${recipient.firstName},</p>
-      <p><strong>${sender.firstName}</strong> sent you a friend request on Game Tracker.</p>
-      <p><a href="https://your-frontend.com/friends/requests">Click here to view and respond</a>.</p>
-    `;
-
-    await sendEmail(recipient.email, "New Friend Request – Game Tracker", html);
-
-    res.json({ message: "Friend request sent.", data: yourData});
-  } catch (err) {
-    next(err);
   }
-}
+
 
 // Accept or reject a friend request
 async function respondToFriendRequest(req, res, next) {
@@ -98,7 +106,7 @@ async function respondToFriendRequest(req, res, next) {
 
     await user.save();
 
-    res.json({ message: `Friend request ${action.toLowerCase()}.` });
+    res.json({ message: `Friend request ${action.toLowerCase()}.`, data: yourData });
   } catch (err) {
     next(err);
   }
@@ -166,7 +174,7 @@ async function unfriendUser(req, res, next) {
     await user.save();
     await friend.save();
 
-    res.json({ message: "Unfriended successfully." });
+    res.json({ message: "Unfriended successfully.", data: yourData});
   } catch (err) {
     next(err);
   }
