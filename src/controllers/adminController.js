@@ -142,6 +142,7 @@ async function getSessionsByDateRange(req, res, next) {
   try {
     const start = new Date(req.query.start);
     const end = new Date(req.query.end);
+    end.setHours(23, 59, 59, 999);
 
     const sessions = await Session.find({
       date: { $gte: start, $lte: end }
