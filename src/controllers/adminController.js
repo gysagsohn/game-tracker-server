@@ -145,7 +145,7 @@ async function getSessionsByDateRange(req, res, next) {
 
     const sessions = await Session.find({
       date: { $gte: start, $lte: end }
-    }).populate("game plater.user");
+    }).populate("game players.user");
 
     res.json(sessions);
   } catch (err) {
