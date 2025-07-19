@@ -186,5 +186,6 @@ module.exports = {
   verifyEmail,
   resendVerificationEmail,
   forgotPassword,
-  resetPassword
+  resetPassword,
+  sendVerificationEmail
 };

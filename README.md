@@ -285,7 +285,7 @@ Returns:
 | POST   | `/games`         | Add a new game                                            |
 | PUT    | `/games/:id`     | Edit a game                                               |
 | DELETE | `/games/:id`     | Delete a game                                             |
-| POST   | `/games/:id/like`      | Add or remove a game from the user's favorites list |
+| POST   | `/games/:id/like`| Add or remove a game from the user's favorites list       |
 
 
 ### `/session (matches)` – Match Routes

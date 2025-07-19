@@ -14,60 +14,60 @@ async function getAllSessions(req, res, next) {
   }
 }
 
-// POST /sessions
-async function createSession(req, res, next) {
-  try {
-    const { game, players, notes, date } = req.body;
-    if (!game || !players || players.length === 0) {
-      return res.status(400).json({ message: "Game and players are required." });
-    }
-
-    let allConfirmed = true;
-
-    for (const player of players) {
-      if (!player.user) {
-        // Guest players are auto-confirmed
-        player.confirmed = true;
-
-        if (player.invited && player.email) {
-          const key = `${player.email}_${new Date().toDateString()}`;
-          const sentToday = rateLimitCache[key] || 0;
-
-          if (sentToday < 3) {
-            await sendGuestInviteEmail(player.email, player.name);
-            rateLimitCache[key] = sentToday + 1;
-          } else {
-            console.log(`Invite limit reached for ${player.email}`);
-          }
-        }
-
-      } else if (player.user.toString() === req.user._id.toString()) {
-        // Match creator → auto-confirm yourself
-        player.confirmed = true;
-      } else {
-        // Other registered players must confirm manually
-        player.confirmed = false;
-        allConfirmed = false;
+  // POST /sessions
+  async function createSession(req, res, next) {
+    try {
+      const { game, players, notes, date } = req.body;
+      if (!game || !players || players.length === 0) {
+        return res.status(400).json({ message: "Game and players are required." });
       }
+
+      let allConfirmed = true;
+
+      for (const player of players) {
+        if (!player.user) {
+          // Guest players are auto-confirmed
+          player.confirmed = true;
+
+          if (player.invited && player.email) {
+            const key = `${player.email}_${new Date().toDateString()}`;
+            const sentToday = rateLimitCache[key] || 0;
+
+            if (sentToday < 3) {
+              await sendGuestInviteEmail(player.email, player.name);
+              rateLimitCache[key] = sentToday + 1;
+            } else {
+              console.log(`Invite limit reached for ${player.email}`);
+            }
+          }
+
+        } else if (player.user.toString() === req.user._id.toString()) {
+          // Match creator → auto-confirm yourself
+          player.confirmed = true;
+        } else {
+          // Other registered players must confirm manually
+          player.confirmed = false;
+          allConfirmed = false;
+        }
+      }
+
+      const matchStatus = allConfirmed ? "Confirmed" : "Pending";
+
+      const session = new Session({
+        game,
+        players,
+        notes,
+        matchStatus,
+        createdBy: req.user._id,
+        date: date || Date.now()
+      });
+
+      await session.save();
+      res.status(201).json({ message: "Match created", data: session });
+    } catch (err) {
+      next(err);
     }
-
-    const matchStatus = allConfirmed ? "Confirmed" : "Pending";
-
-    const session = new Session({
-      game,
-      players,
-      notes,
-      matchStatus,
-      createdBy: req.user._id,
-      date: date || Date.now()
-    });
-
-    await session.save();
-    res.status(201).json({ message: "Match created", data: session });
-  } catch (err) {
-    next(err);
   }
-}
 // Helper
 async function sendGuestInviteEmail(email, name = "Player") {
   const html = `
