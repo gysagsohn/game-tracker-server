@@ -307,16 +307,16 @@ Returns:
 
 ### `/friends` - Friend Routes
 
-| Method | Route                          | Description                              |
-|--------|--------------------------------|------------------------------------------|
-| POST   | `/friends/send`                | Send a friend request                    |
-| POST   | `/friends/respond`             | Accept or reject a request               |
-| GET    | `/friends/requests`            | View your pending friend requests        |
-| GET    | `/friends/list/:id`            | Get friend list of a user                |
-| GET    | `/friends/mutual/:id`          | View mutual friends with a user          |
-| POST   | `/friends/unfriend`            | Remove a friend                          |
-| GET    | `/friends/notifications`       | Get all friend-related notifications     |
-| PUT    | `/friends/notifications/:id/read` | Mark a notification as read            |
+| Method | Route                             | Description                              |
+|--------|-----------------------------------|------------------------------------------|
+| POST   | `/friends/send`                   | Send a friend request                    |
+| POST   | `/friends/respond`                | Accept or reject a request               |
+| GET    | `/friends/requests`               | View your pending friend requests        |
+| GET    | `/friends/list/:id`               | Get friend list of a user                |
+| GET    | `/friends/mutual/:id`             | View mutual friends with a user          |
+| POST   | `/friends/unfriend`               | Remove a friend                          |
+| GET    | `/friends/notifications`          | Get all friend-related notifications     |
+| PUT    | `/friends/notifications/:id/read` | Mark a notification as read              |
 
 
 ## Admin Routes
