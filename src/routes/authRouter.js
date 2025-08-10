@@ -18,7 +18,7 @@ router.post("/reset-password", authController.resetPassword);
 router.get("/google", passport.authenticate("google", { scope: ["profile", "email"] }));
 router.get("/google/callback", passport.authenticate("google", { session: false, failureRedirect: "/" }), (req, res) => {
   const token = jwt.sign({ id: req.user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
-  res.redirect(`${process.env.FRONTEND_URL}/oauth-success?token=${token}`);
+  res.redirect(`${process.env.FRONTEND_URL}/oauth-success#token=${token}`);
 });
 
 module.exports = router;

@@ -74,7 +74,7 @@ async function sendGuestInviteEmail(email, name = "Player") {
     <h3>You’ve been invited to a game on Game Tracker!</h3>
     <p>Hi ${name},</p>
     <p>You were added to a match as a guest. To track your own stats and matches, create an account below:</p>
-    <a href="https://your-frontend.com/signup">Sign up and claim your games</a>
+    <a href="https://gy-gametracker.netlify.app/signup">Sign up and claim your games</a>
   `;
   await sendEmail(email, "Game Tracker Invite – Claim Your Games", html);
 }
@@ -188,7 +188,7 @@ async function remindMatchConfirmation(req, res, next) {
       const html = `
         <p>Hi ${name},</p>
         <p>You’ve been added to a game on Game Tracker but haven’t confirmed your result yet.</p>
-        <a href="https://your-frontend.com/matches/${session._id}">Click here to review and confirm</a>.
+        <a href="https://gy-gametracker.netlify.app/matches/${session._id}">Click here to review and confirm</a>.
       `;
 
       await sendEmail(email, "Reminder – Confirm Your Game Result", html);

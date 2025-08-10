@@ -35,7 +35,7 @@ const logUserActivity = require("../utils/logActivity");
         recipient: recipient._id,
         sender: currentUserId,
         type: NotificationTypes.FRIEND_REQUEST,
-        message: `${sender.firstName} sent you a friend request. <a href="https://your-frontend.com/friends/requests">View</a>`
+        message: `${sender.firstName} sent you a friend request. <a href="https://gy-gametracker.netlify.app/friends/requests">View</a>`
       });
 
       await logUserActivity(currentUserId, "Sent Friend Request", { to: recipient._id });
@@ -44,7 +44,7 @@ const logUserActivity = require("../utils/logActivity");
       const html = `
         <p>Hi ${recipient.firstName},</p>
         <p><strong>${sender.firstName}</strong> sent you a friend request on Game Tracker.</p>
-        <p><a href="https://your-frontend.com/friends/requests">Click here to view and respond</a>.</p>
+        <p><a href="https://gy-gametracker.netlify.app/friends/requests">Click here to view and respond</a>.</p>
       `;
 
       try {

@@ -8,7 +8,7 @@ passport.use(new GoogleStrategy(
   {
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: "/auth/google/callback"
+    callbackURL: `${process.env.SERVER_URL}/auth/google/callback`
   },
   async (accessToken, refreshToken, profile, done) => {
     try {
@@ -26,7 +26,7 @@ passport.use(new GoogleStrategy(
           lastName,
           email,
           authProvider: "google",
-          isEmailVerified: false // Require manual verification
+          isEmailVerified: true 
         });
 
         await user.save();
