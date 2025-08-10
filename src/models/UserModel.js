@@ -8,6 +8,9 @@ const userSchema = new mongoose.Schema({
   lastName: { type: String, required: true },
   email: { type: String, required: true, unique: true },
 
+  // OAuth identifiers (sparse so it only applies to docs that have it)
+  googleId:  { type: String, index: true, sparse: true },
+
   isEmailVerified: { type: Boolean, default: false },
   resetPasswordToken: { type: String },
   resetPasswordExpires: { type: Date },
@@ -64,6 +67,8 @@ const userSchema = new mongoose.Schema({
 
   createdAt: { type: Date, default: Date.now }
 });
+
+userSchema.index({ googleId: 1 }, { unique: true, sparse: true });
 
 // Hash password before saving (local only)
 userSchema.pre("save", async function (next) {

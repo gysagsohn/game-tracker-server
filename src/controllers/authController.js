@@ -72,10 +72,23 @@ async function signup(req, res, next) {
 async function login(req, res, next) {
   try {
     const { email, password } = req.body;
+
     const user = await User.findOne({ email });
-    if (!user || !(await user.comparePassword(password))) {
+    if (!user) {
       return res.status(400).json({ message: "Invalid credentials" });
     }
+
+    if (user.authProvider === "google" && !user.password) {
+      return res
+        .status(400)
+        .json({ message: "This account uses Google sign-in. Please continue with Google." });
+    }
+
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Invalid credentials" });
+    }
+
     if (!user.isEmailVerified) {
       return res.status(403).json({ message: "Please verify your email before logging in." });
     }
@@ -135,6 +148,12 @@ async function forgotPassword(req, res, next) {
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ message: "User not found." });
 
+    if (user.authProvider === "google" && !user.password) {
+      return res
+        .status(400)
+        .json({ message: "This account uses Google sign-in. Please continue with Google to access your account." });
+    }
+
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "15m" });
     user.resetPasswordToken = token;
     user.resetPasswordExpires = Date.now() + 15 * 60 * 1000;
@@ -147,7 +166,7 @@ async function forgotPassword(req, res, next) {
     `;
 
     await sendEmail(user.email, "Reset your Game Tracker password", html);
-    res.json({ message: "Reset link sent to your email.", data: user});
+    res.json({ message: "Reset link sent to your email.", data: user });
   } catch (err) {
     next(err);
   }

@@ -1,43 +1,70 @@
 const passport = require("passport");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const User = require("../models/UserModel");
-const sendVerificationEmail = require("../controllers/authController").sendVerificationEmail;
 
-// Set up Google strategy
-passport.use(new GoogleStrategy(
-  {
-    clientID: process.env.GOOGLE_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: `${process.env.SERVER_URL}/auth/google/callback`
-  },
-  async (accessToken, refreshToken, profile, done) => {
-    try {
-      // Extract useful info from Google profile
-      const email = profile.emails[0].value;
-      const firstName = profile.name.givenName;
-      const lastName = profile.name.familyName;
+// Google OAuth strategy
+passport.use(
+  new GoogleStrategy(
+    {
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL: `${process.env.SERVER_URL}/auth/google/callback`,
+    },
+    async (accessToken, refreshToken, profile, done) => {
+      try {
+        const email =
+          profile?.emails?.[0]?.value?.toLowerCase?.() ||
+          null;
+        if (!email) {
+          return done(new Error("Google account has no email"), null);
+        }
 
-      let user = await User.findOne({ email });
+        const firstName = profile?.name?.givenName || "";
+        const lastName = profile?.name?.familyName || "";
+        const googleId = profile?.id;
+        const photo = profile?.photos?.[0]?.value; // default avatar candidate
 
-      // If user doesn't exist, create one
-      if (!user) {
-        user = new User({
-          firstName,
-          lastName,
-          email,
-          authProvider: "google",
-          isEmailVerified: true 
-        });
+        let user = await User.findOne({ email });
 
-        await user.save();
-        await sendVerificationEmail(user);
+        if (!user) {
+          // Create Google-first account
+          user = await User.create({
+            firstName,
+            lastName,
+            email,
+            authProvider: "google",
+            googleId,
+            isEmailVerified: true,
+            profileIcon: photo || undefined,
+          });
+        } else {
+          // Link googleId if missing, keep local provider if present
+          let changed = false;
+
+          if (!user.googleId) {
+            user.googleId = googleId;
+            changed = true;
+          }
+          if (!user.profileIcon && photo) {
+            user.profileIcon = photo;
+            changed = true;
+          }
+          // Only set provider to 'google' if it's empty
+          if (!user.authProvider) {
+            user.authProvider = "google";
+            changed = true;
+          }
+
+          if (changed) await user.save();
+        }
+
+        return done(null, user);
+      } catch (err) {
+        return done(err, null);
       }
-
-      return done(null, user);
-    } catch (err) {
-      return done(err, null);
     }
-  }
-));
+  )
+);
 
-// Serialize/deserialize not needed with JWT
+// No serialize/deserialize needed with stateless JWT
+module.exports = passport;
