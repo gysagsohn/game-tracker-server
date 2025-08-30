@@ -7,12 +7,16 @@ const User = require("../models/UserModel");
 // GET /sessions
 async function getAllSessions(req, res, next) {
   try {
-    const sessions = await Session.find({ "players.user": req.user._id }).populate("game players.user");
+    const sessions = await Session.find({ "players.user": req.user._id })
+      .populate("game")
+      .populate("players.user", "firstName lastName email")
+      .populate("createdBy", "firstName lastName email");
     res.json({ message: "Fetched your sessions", data: sessions });
   } catch (err) {
     next(err);
   }
 }
+
 
   // POST /sessions
   async function createSession(req, res, next) {
@@ -82,7 +86,12 @@ async function sendGuestInviteEmail(email, name = "Player") {
 // GET /sessions/:id
 async function getSessionById(req, res, next) {
   try {
-    const session = await Session.findById(req.params.id).populate("game players.user");
+    const session = await Session.findById(req.params.id)
+      .populate("game")
+      .populate("players.user", "firstName lastName email")
+      .populate("lastEditedBy", "firstName lastName email")
+      .populate("createdBy", "firstName lastName email");
+
     if (!session) return res.status(404).json({ message: "Session not found" });
     res.json({ message: "Fetched session", data: session });
   } catch (err) {
@@ -106,6 +115,13 @@ async function updateSession(req, res, next) {
     session.lastEditedBy = req.user._id;
 
     await session.save();
+
+    await session
+      .populate("game")
+      .populate("players.user", "firstName lastName email")
+      .populate("lastEditedBy", "firstName lastName email")
+      .populate("createdBy", "firstName lastName email");
+
     await logUserActivity(req.user._id, "Updated Match", { sessionId: session._id });
 
     res.json({ message: "Session updated", data: session });
