@@ -20,6 +20,8 @@ router.get("/suggested", controller.getSuggestedFriends);
 router.post("/unfriend", controller.unfriendUser);
 router.get("/notifications", controller.getNotifications);
 router.put("/notifications/:id/read", controller.markNotificationAsRead);
+router.post("/notifications/:id/read", controller.markNotificationAsRead);
+router.post("/notifications/read-all", controller.readAllNotifications);
 router.get("/mutual/:id", controller.getMutualFriends);
 
 module.exports = router;
