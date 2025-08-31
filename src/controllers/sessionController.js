@@ -1,8 +1,11 @@
+// src/controllers/sessionController.js
 const Session = require("../models/SessionModel");
 const sendEmail = require("../utils/sendEmail");
 const rateLimitCache = {};
 const logUserActivity = require("../utils/logActivity");
 const User = require("../models/UserModel");
+const Notification = require("../models/NotificationModel");
+const NotificationTypes = require("../constants/notificationTypes");
 
 // GET /sessions
 async function getAllSessions(req, res, next) {
@@ -17,61 +20,82 @@ async function getAllSessions(req, res, next) {
   }
 }
 
-
-  // POST /sessions
-  async function createSession(req, res, next) {
-    try {
-      const { game, players, notes, date } = req.body;
-      if (!game || !players || players.length === 0) {
-        return res.status(400).json({ message: "Game and players are required." });
-      }
-
-      let allConfirmed = true;
-
-      for (const player of players) {
-        if (!player.user) {
-          // Guest players are auto-confirmed
-          player.confirmed = true;
-
-          if (player.invited && player.email) {
-            const key = `${player.email}_${new Date().toDateString()}`;
-            const sentToday = rateLimitCache[key] || 0;
-
-            if (sentToday < 3) {
-              await sendGuestInviteEmail(player.email, player.name);
-              rateLimitCache[key] = sentToday + 1;
-            } else {
-              console.log(`Invite limit reached for ${player.email}`);
-            }
-          }
-
-        } else if (player.user.toString() === req.user._id.toString()) {
-          // Match creator → auto-confirm yourself
-          player.confirmed = true;
-        } else {
-          // Other registered players must confirm manually
-          player.confirmed = false;
-          allConfirmed = false;
-        }
-      }
-
-      const matchStatus = allConfirmed ? "Confirmed" : "Pending";
-
-      const session = new Session({
-        game,
-        players,
-        notes,
-        matchStatus,
-        createdBy: req.user._id,
-        date: date || Date.now()
-      });
-
-      await session.save();
-      res.status(201).json({ message: "Match created", data: session });
-    } catch (err) {
-      next(err);
+// POST /sessions
+async function createSession(req, res, next) {
+  try {
+    const { game, players, notes, date } = req.body;
+    if (!game || !players || players.length === 0) {
+      return res.status(400).json({ message: "Game and players are required." });
     }
+
+    let allConfirmed = true;
+
+    for (const player of players) {
+      if (!player.user) {
+        // Guest players are auto-confirmed
+        player.confirmed = true;
+
+        if (player.invited && player.email) {
+          const key = `${player.email}_${new Date().toDateString()}`;
+          const sentToday = rateLimitCache[key] || 0;
+
+          if (sentToday < 3) {
+            await sendGuestInviteEmail(player.email, player.name);
+            rateLimitCache[key] = sentToday + 1;
+          } else {
+            console.log(`Invite limit reached for ${player.email}`);
+          }
+        }
+      } else if (player.user.toString() === req.user._id.toString()) {
+        // Match creator → auto-confirm yourself
+        player.confirmed = true;
+      } else {
+        // Other registered players must confirm manually
+        player.confirmed = false;
+        allConfirmed = false;
+      }
+    }
+
+    const matchStatus = allConfirmed ? "Confirmed" : "Pending";
+
+    const session = new Session({
+      game,
+      players,
+      notes,
+      matchStatus,
+      createdBy: req.user._id,
+      date: date || Date.now()
+    });
+
+    await session.save();
+
+    // Notify registered players (excluding creator) that they were invited
+    try {
+      const creatorId = req.user._id.toString();
+      const registered = (players || []).filter(
+        p => p.user && p.user.toString() !== creatorId
+      );
+      if (registered.length) {
+        await Notification.insertMany(
+          registered.map(p => ({
+            recipient: p.user,
+            sender: req.user._id,
+            type: NotificationTypes.MATCH_INVITE,
+            message: `You've been added to a match.`,
+            sessionId: session._id
+          }))
+        );
+      }
+    } catch (e) {
+      console.warn("Failed to emit MATCH_INVITE notifications:", e.message);
+    }
+
+    res.status(201).json({ message: "Match created", data: session });
+  } catch (err) {
+    next(err);
   }
+}
+
 // Helper
 async function sendGuestInviteEmail(email, name = "Player") {
   const html = `
@@ -124,6 +148,27 @@ async function updateSession(req, res, next) {
 
     await logUserActivity(req.user._id, "Updated Match", { sessionId: session._id });
 
+    // Notify other registered players about the update
+    try {
+      const updaterId = req.user._id.toString();
+      const recipients = session.players
+        .filter(p => p.user && p.user._id && p.user._id.toString() !== updaterId)
+        .map(p => p.user._id);
+      if (recipients.length) {
+        await Notification.insertMany(
+          recipients.map(uid => ({
+            recipient: uid,
+            sender: req.user._id,
+            type: NotificationTypes.MATCH_UPDATED,
+            message: `Match was updated.`,
+            sessionId: session._id
+          }))
+        );
+      }
+    } catch (e) {
+      console.warn("Failed to emit MATCH_UPDATED notifications:", e.message);
+    }
+
     res.json({ message: "Session updated", data: session });
   } catch (err) {
     next(err);
@@ -140,7 +185,7 @@ async function deleteSession(req, res, next) {
   }
 }
 
-// PATCH /sessions/:id/confirm
+// POST /sessions/:id/confirm
 async function confirmSession(req, res, next) {
   try {
     const session = await Session.findById(req.params.id);
@@ -167,7 +212,56 @@ async function confirmSession(req, res, next) {
     await session.save();
     await logUserActivity(req.user._id, "Confirmed Match", { sessionId: session._id });
 
+    // Notify the creator that you confirmed
+    try {
+      if (session.createdBy) {
+        await Notification.create({
+          recipient: session.createdBy,
+          sender: req.user._id,
+          type: NotificationTypes.MATCH_CONFIRMED,
+          message: `A player confirmed the match.`,
+          sessionId: session._id
+        });
+      }
+    } catch (e) {
+      console.warn("Failed to emit MATCH_CONFIRMED notification:", e.message);
+    }
+
     res.json({ message: "Match confirmed", data: { matchStatus: session.matchStatus } });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /sessions/:id/decline
+// Minimal: log activity + notify creator (does not change session players array).
+async function declineSession(req, res, next) {
+  try {
+    const session = await Session.findById(req.params.id).populate("createdBy", "firstName lastName email");
+    if (!session) return res.status(404).json({ message: "Match not found." });
+
+    const userId = req.user._id.toString();
+    const isPlayer = session.players.some(p => p.user && p.user.toString() === userId);
+    if (!isPlayer) return res.status(403).json({ message: "You are not a registered player in this match." });
+
+    await logUserActivity(req.user._id, "Declined Match", { sessionId: session._id });
+
+    // Notify creator that the user declined
+    try {
+      if (session.createdBy) {
+        await Notification.create({
+          recipient: session.createdBy._id || session.createdBy,
+          sender: req.user._id,
+          type: NotificationTypes.MATCH_DECLINED,
+          message: `A player declined the match.`,
+          sessionId: session._id
+        });
+      }
+    } catch (e) {
+      console.warn("Failed to emit MATCH_DECLINED notification:", e.message);
+    }
+
+    return res.json({ message: "You have declined this match." });
   } catch (err) {
     next(err);
   }
@@ -210,6 +304,21 @@ async function remindMatchConfirmation(req, res, next) {
       await sendEmail(email, "Reminder – Confirm Your Game Result", html);
     }
 
+    // Emit in-app reminders too
+    try {
+      await Notification.insertMany(
+        unconfirmed.map(p => ({
+          recipient: p.user._id,
+          sender: req.user._id,
+          type: NotificationTypes.MATCH_REMINDER,
+          message: `Reminder to confirm your match.`,
+          sessionId: session._id
+        }))
+      );
+    } catch (e) {
+      console.warn("Failed to emit MATCH_REMINDER notifications:", e.message);
+    }
+
     session.lastReminderSent = new Date();
     await session.save();
 
@@ -245,6 +354,7 @@ module.exports = {
   deleteSession,
   createSession,
   confirmSession,
+  declineSession,
   remindMatchConfirmation,
   getMyPendingSessions
 };

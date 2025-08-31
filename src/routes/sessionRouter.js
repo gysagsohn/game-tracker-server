@@ -7,6 +7,7 @@ const matchPrivacyGuard = require("../middleware/matchPrivacyGuard");
 router.get("/", authMiddleware, sessionController.getAllSessions); // returns only user's matches
 router.post("/", authMiddleware, sessionController.createSession);
 router.post("/:id/confirm", authMiddleware, sessionController.confirmSession);
+router.post("/:id/decline", authMiddleware, sessionController.declineSession);
 
 router.get("/my-pending", authMiddleware, sessionController.getMyPendingSessions);
 
