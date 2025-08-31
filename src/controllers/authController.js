@@ -1,8 +1,8 @@
+// src/controllers/authController.js
 const User = require("../models/UserModel");
 const jwt = require("jsonwebtoken");
 const sendEmail = require("../utils/sendEmail");
 const Session = require("../models/SessionModel");
-
 
 // Helper: Create a JWT
 function createToken(user) {
@@ -13,15 +13,13 @@ function createToken(user) {
 async function sendVerificationEmail(user) {
   const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
   const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
-
-
   const html = `
     <h2>Email Verification</h2>
     <p>Hi ${user.firstName},</p>
     <p>Click below to verify your email:</p>
     <a href="${verificationLink}">${verificationLink}</a>
   `;
-console.log("📩 VERIFY EMAIL TOKEN:", token);
+  console.log("📩 VERIFY EMAIL TOKEN:", token);
   await sendEmail(user.email, "Verify your email – Game Tracker", html);
 }
 
@@ -45,7 +43,7 @@ async function signup(req, res, next) {
       password,
       authProvider: "local",
       isEmailVerified: false,
-      role
+      role,
     });
 
     await newUser.save();
@@ -56,10 +54,8 @@ async function signup(req, res, next) {
       { $set: { "players.$[elem].user": newUser._id } },
       { arrayFilters: [{ "elem.email": email, "elem.user": null }] }
     );
-
     console.log(`Synced ${sessions.modifiedCount} guest match(es) to ${email}`);
 
-    // Send verification email
     await sendVerificationEmail(newUser);
 
     const token = createToken(newUser);
@@ -75,9 +71,7 @@ async function login(req, res, next) {
     const { email, password } = req.body;
 
     const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(400).json({ message: "Invalid credentials" });
-    }
+    if (!user) return res.status(400).json({ message: "Invalid credentials" });
 
     if (user.authProvider === "google" && !user.password) {
       return res
@@ -86,16 +80,10 @@ async function login(req, res, next) {
     }
 
     const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
-      return res.status(400).json({ message: "Invalid credentials" });
-    }
+    if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
 
-    if (!user.isEmailVerified) {
-      return res.status(403).json({ message: "Please verify your email before logging in." });
-    }
-    if (user.isSuspended) {
-      return res.status(403).json({ message: "Account is suspended." });
-    }
+    if (!user.isEmailVerified) return res.status(403).json({ message: "Please verify your email before logging in." });
+    if (user.isSuspended) return res.status(403).json({ message: "Account is suspended." });
 
     const token = createToken(user);
     res.json({ user, token });
@@ -114,9 +102,7 @@ async function verifyEmail(req, res, next) {
     const user = await User.findById(decoded.id).select("-password");
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    if (user.isEmailVerified) {
-      return res.status(200).json({ message: "Email already verified" });
-    }
+    if (user.isEmailVerified) return res.status(200).json({ message: "Email already verified" });
 
     user.isEmailVerified = true;
     await user.save();
@@ -136,7 +122,7 @@ async function resendVerificationEmail(req, res, next) {
     if (user.isEmailVerified) return res.status(400).json({ message: "Email already verified." });
 
     await sendVerificationEmail(user);
-    res.json({ message: "Verification email resent.", data: user});
+    res.json({ message: "Verification email resent.", data: user });
   } catch (err) {
     next(err);
   }
@@ -165,16 +151,16 @@ async function forgotPassword(req, res, next) {
       <p>Click below to reset your password:</p>
       <a href="${process.env.FRONTEND_URL}/reset-password?token=${token}">Reset Password</a>
     `;
-
     await sendEmail(user.email, "Reset your Game Tracker password", html);
+
     res.json({ message: "Reset link sent to your email.", data: user });
   } catch (err) {
     next(err);
   }
 }
 
-// Reset password
-exports.resetPassword = async (req, res, next) => {
+// Reset password (define as a named function so we can export it cleanly)
+async function resetPassword(req, res, next) {
   try {
     const { token, password } = req.body;
     if (!token || !password) {
@@ -184,33 +170,23 @@ exports.resetPassword = async (req, res, next) => {
     let payload;
     try {
       payload = jwt.verify(token, process.env.JWT_SECRET);
-    } catch (e) {
+    } catch {
       return res.status(400).json({ message: "Invalid or expired token." });
     }
 
     const user = await User.findById(payload.id);
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
-    }
+    if (!user) return res.status(404).json({ message: "User not found." });
 
-    // If this account is Google-only, block local password reset
     if (user.authProvider !== "local") {
       return res.status(400).json({ message: "This account uses Google sign-in. Use Google to log in." });
     }
 
-    // Set the new password — pre-save hook will hash it
-    user.password = password;
-
-    // If you also use DB tokens (optional), clear them:
-    user.resetPasswordToken = undefined;
+    user.password = password;                   // pre-save hook will hash it
+    user.resetPasswordToken = undefined;        // clear DB token (if used)
     user.resetPasswordExpires = undefined;
-
     await user.save();
 
-    // Auto-login: issue a fresh JWT (7 days)
-    const freshToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
-
-    // Return a safe user object without password
+    const freshToken = createToken(user);
     const safeUser = await User.findById(user._id).select("-password").lean();
 
     return res.json({
@@ -219,10 +195,9 @@ exports.resetPassword = async (req, res, next) => {
       user: safeUser,
     });
   } catch (err) {
-    return next(err);
+    next(err);
   }
-};
-
+}
 
 module.exports = {
   signup,
@@ -231,5 +206,5 @@ module.exports = {
   resendVerificationEmail,
   forgotPassword,
   resetPassword,
-  sendVerificationEmail
+  sendVerificationEmail,
 };
