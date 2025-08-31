@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 const sendEmail = require("../utils/sendEmail");
 const Session = require("../models/SessionModel");
 
+
 // Helper: Create a JWT
 function createToken(user) {
   return jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
@@ -173,30 +174,54 @@ async function forgotPassword(req, res, next) {
 }
 
 // Reset password
-async function resetPassword(req, res, next) {
+exports.resetPassword = async (req, res, next) => {
   try {
-    const { token, newPassword } = req.body;
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const { token, password } = req.body;
+    if (!token || !password) {
+      return res.status(400).json({ message: "Missing token or password." });
+    }
 
-    const user = await User.findOne({
-      _id: decoded.id,
-      resetPasswordToken: token,
-      resetPasswordExpires: { $gt: Date.now() }
-    });
+    let payload;
+    try {
+      payload = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (e) {
+      return res.status(400).json({ message: "Invalid or expired token." });
+    }
 
-    if (!user) return res.status(400).json({ message: "Invalid or expired token." });
+    const user = await User.findById(payload.id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
 
-    user.password = newPassword;
+    // If this account is Google-only, block local password reset
+    if (user.authProvider !== "local") {
+      return res.status(400).json({ message: "This account uses Google sign-in. Use Google to log in." });
+    }
+
+    // Set the new password — pre-save hook will hash it
+    user.password = password;
+
+    // If you also use DB tokens (optional), clear them:
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
+
     await user.save();
 
-    res.json({ message: "Password has been reset."});
-  } catch (err) {
-    next(err);
-  }
-}
+    // Auto-login: issue a fresh JWT (7 days)
+    const freshToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
+    // Return a safe user object without password
+    const safeUser = await User.findById(user._id).select("-password").lean();
+
+    return res.json({
+      message: "Password has been reset.",
+      token: freshToken,
+      user: safeUser,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
 
 
 module.exports = {
