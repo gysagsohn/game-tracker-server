@@ -36,18 +36,17 @@ async function sendFriendRequest(req, res, next) {
       recipient: recipient._id,
       sender: currentUserId,
       type: NotificationTypes.FRIEND_REQUEST,
-      message: `${sender.firstName} sent you a friend request. <a href="https://gy-gametracker.netlify.app/friends/requests">View</a>`
+      message: `${sender.firstName} sent you a friend request. <a href="https://gy-gametracker.netlify.app/friends?tab=requests">View</a>`
     });
 
     await logUserActivity(currentUserId, "Sent Friend Request", { to: recipient._id });
 
     // Try sending email
     const html = `
-      <p>Hi ${recipient.firstName},</p>
-      <p><strong>${sender.firstName}</strong> sent you a friend request on Game Tracker.</p>
-      <p><a href="https://gy-gametracker.netlify.app/friends/requests">Click here to view and respond</a>.</p>
+      <p>Hi ${recipient.firstName || ""},</p>
+      <p><strong>${sender.firstName || ""} ${sender.lastName || ""}</strong> sent you a friend request on Game Tracker.</p>
+      <p><a href="https://gy-gametracker.netlify.app/friends?tab=requests">Click here to view and respond</a>.</p>
     `;
-
     try {
       await sendEmail(recipient.email, "New Friend Request – Game Tracker", html);
     } catch (emailErr) {
@@ -83,15 +82,16 @@ async function respondToFriendRequest(req, res, next) {
 
       await Notification.create({
         recipient: senderId,
-        type: NotificationTypes.FRIEND_ACCEPT, // keep your constant name
-        message: `${user.firstName} ${user.lastName} accepted your friend request.`
+        sender: currentUserId,
+        type: NotificationTypes.FRIEND_ACCEPT, // (UI supports FRIEND_ACCEPT or FRIEND_ACCEPTED)
+        message: `${user.firstName} ${user.lastName || ""} accepted your friend request.`
       });
 
       try {
         await sendEmail(
           sender.email,
           "Friend Request Accepted – Game Tracker",
-          `<p>${user.firstName} ${user.lastName} accepted your friend request.</p>`
+          `<p>${user.firstName} ${user.lastName || ""} accepted your friend request.</p>`
         );
       } catch (emailErr) {
         console.error("Failed to send friend accept email:", emailErr.message);
@@ -116,13 +116,8 @@ async function getPendingFriendRequests(req, res, next) {
       "friendRequests.user",
       "firstName lastName email"
     );
-
     const pending = user.friendRequests.filter((fr) => fr.status === "Pending");
-
-    res.json({
-      message: "Fetched pending friend requests",
-      data: pending
-    });
+    res.json({ message: "Fetched pending friend requests", data: pending });
   } catch (err) {
     next(err);
   }
@@ -141,7 +136,7 @@ async function getFriendList(req, res, next) {
   }
 }
 
-// Suggest friends based on mutuals
+// Suggest friends
 async function getSuggestedFriends(req, res, next) {
   try {
     const user = await User.findById(req.user.id);
@@ -165,7 +160,7 @@ async function getSuggestedFriends(req, res, next) {
   }
 }
 
-// Unfriend a user
+// Unfriend
 async function unfriendUser(req, res, next) {
   try {
     const { friendId } = req.body;
@@ -209,7 +204,7 @@ async function getNotifications(req, res, next) {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate('sender', 'firstName lastName email')
+        .populate("sender", "firstName lastName email")
         .lean()
     ]);
 
@@ -223,7 +218,7 @@ async function getNotifications(req, res, next) {
   }
 }
 
-// Mark notification as read
+// Mark one notification read
 async function markNotificationAsRead(req, res, next) {
   try {
     const notification = await Notification.findOneAndUpdate(
@@ -258,7 +253,7 @@ async function readAllNotifications(req, res, next) {
   }
 }
 
-// Get mutual friends between current user and another user
+// Mutuals
 async function getMutualFriends(req, res, next) {
   try {
     const user = await User.findById(req.user.id);
@@ -278,6 +273,46 @@ async function getMutualFriends(req, res, next) {
   }
 }
 
+// Get requests YOU have sent to others (defaults to Pending only)
+async function getSentFriendRequests(req, res, next) {
+  try {
+    const userId = req.user.id;
+    const status = (req.query.status || "Pending"); // allow ?status=Accepted|Rejected|Pending|All
+
+    // Build $elemMatch for status filtering
+    const elem =
+      status === "All"
+        ? { user: userId }
+        : { user: userId, status };
+
+    // Find users who have a request from you
+    const recipients = await User.find(
+      { friendRequests: { $elemMatch: elem } },
+      "firstName lastName email friendRequests"
+    ).lean();
+
+    // Return as an array of { user: <recipient>, status }
+    const data = recipients.map((rec) => {
+      const reqFromMe = rec.friendRequests.find(
+        (fr) => String(fr.user) === String(userId) && (status === "All" || fr.status === status)
+      );
+      return {
+        user: {
+          _id: rec._id,
+          firstName: rec.firstName,
+          lastName: rec.lastName,
+          email: rec.email,
+        },
+        status: reqFromMe?.status || "Pending",
+      };
+    });
+
+    res.json({ message: "Fetched sent friend requests", data });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   sendFriendRequest,
   respondToFriendRequest,
@@ -288,5 +323,6 @@ module.exports = {
   getNotifications,
   markNotificationAsRead,
   readAllNotifications,
-  getMutualFriends
+  getMutualFriends,
+  getSentFriendRequests
 };
