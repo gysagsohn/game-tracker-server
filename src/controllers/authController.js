@@ -34,7 +34,7 @@ async function signup(req, res, next) {
     const existingUser = await User.findOne({ email });
     if (existingUser) return res.status(409).json({ message: "Email already in use." });
 
-    const role = email === "gysagsohn@hotmail.com" ? "admin" : "user";
+    const role = "user";
 
     const newUser = new User({
       firstName,
