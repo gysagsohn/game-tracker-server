@@ -140,6 +140,44 @@ async function getUserStats(req, res, next) {
   }
 }
 
+// GET /users/search?q=john
+async function searchUsers(req, res, next) {
+  try {
+    const query = req.query.q || "";
+    const currentUserId = req.user._id.toString();
+    
+    if (query.length < 2) {
+      return res.status(400).json({ 
+        message: "Search query must be at least 2 characters" 
+      });
+    }
+
+    // Search by name or email (case-insensitive)
+    const users = await User.find({
+      $and: [
+        {
+          $or: [
+            { firstName: new RegExp(query, "i") },
+            { lastName: new RegExp(query, "i") },
+            { email: new RegExp(query, "i") }
+          ]
+        },
+        { _id: { $ne: currentUserId } }, // Exclude yourself
+        { isSuspended: false } // Exclude suspended users
+      ]
+    })
+    .select("firstName lastName email profileIcon")
+    .limit(10); // Limit results to prevent overload
+
+    res.json({ 
+      message: "Search results", 
+      data: users 
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getAllUsers,
   createUser,
@@ -147,5 +185,6 @@ module.exports = {
   updateUser,
   deleteUser,
   getUserStats,
-  getLoggedInUser
+  getLoggedInUser,
+  searchUsers
 };
