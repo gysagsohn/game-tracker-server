@@ -21,8 +21,8 @@ async function createAdmin() {
 
     const email = await question("Admin email: ");
     const password = await question("Admin password: ");
-    const firstName = await question("First name: ");
-    const lastName = await question("Last name: ");
+    const firstName = await question("First name (leave empty to keep existing): ");
+    const lastName = await question("Last name (leave empty to keep existing): ");
 
     if (!email || !password) {
       console.error("Email and password are required");
@@ -32,19 +32,25 @@ async function createAdmin() {
     const existing = await User.findOne({ email });
 
     if (existing) {
-      if (existing.role === "admin") {
-        console.log(`User ${email} is already an admin`);
-      } else {
-        existing.role = "admin";
-        await existing.save();
-        console.log(`Updated ${email} to admin role`);
-      }
+      console.log(`Found existing user: ${email}`);
+      
+      // Always update role and password
+      existing.role = "admin";
+      existing.password = password; // This will trigger the pre-save hook to hash it
+      existing.isEmailVerified = true;
+      
+      // Update name if provided
+      if (firstName) existing.firstName = firstName;
+      if (lastName) existing.lastName = lastName;
+      
+      await existing.save();
+      console.log(`Updated ${email} to admin role with new password`);
     } else {
       await User.create({
         firstName: firstName || "Admin",
         lastName: lastName || "User",
         email,
-        password,
+        password, // Will be hashed by pre-save hook
         role: "admin",
         authProvider: "local",
         isEmailVerified: true

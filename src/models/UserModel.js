@@ -9,7 +9,7 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
 
   // OAuth identifiers (sparse so it only applies to docs that have it)
-  googleId:  { type: String, index: true, sparse: true },
+  googleId: { type: String, sparse: true },
 
   isEmailVerified: { type: Boolean, default: false },
   resetPasswordToken: { type: String },
