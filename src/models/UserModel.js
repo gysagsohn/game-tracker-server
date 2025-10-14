@@ -3,13 +3,14 @@ const bcrypt = require("bcrypt");
 const { friendRequestSchema } = require("./subdocuments/FriendRequestSchema");
 const NotificationTypes = require("../constants/notificationTypes");
 
+
 const userSchema = new mongoose.Schema({
   firstName: { type: String, required: true },
   lastName: { type: String, required: true },
   email: { type: String, required: true, unique: true },
 
   // OAuth identifiers (sparse so it only applies to docs that have it)
-  googleId: { type: String, sparse: true },
+  googleId: { type: String, unique: true, sparse: true },
 
   isEmailVerified: { type: Boolean, default: false },
   resetPasswordToken: { type: String },
@@ -68,7 +69,7 @@ const userSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-userSchema.index({ googleId: 1 }, { unique: true, sparse: true });
+
 
 // Hash password before saving (local only)
 userSchema.pre("save", async function (next) {
