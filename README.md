@@ -140,7 +140,7 @@ game-tracker-server/
 ```
 
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 - Node.js 18+ 
@@ -394,7 +394,7 @@ Ensure all required variables are set in your hosting platform:
 
 **Gy Sohn**  
 Full-stack developer  
-[LinkedIn](https://www.linkedin.com/in/gysohn) | [GitHub](https://github.com/gysagsohn).  | [Portfolio website](https://gysohn.com)
+[LinkedIn](https://www.linkedin.com/in/gysohn) | [GitHub](https://github.com/gysagsohn)  | [Portfolio website](https://gysohn.com)
 
 Built as a portfolio project demonstrating:
 - Production-grade security practices
