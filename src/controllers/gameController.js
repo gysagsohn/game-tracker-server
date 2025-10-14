@@ -1,5 +1,6 @@
 const Game = require("../models/GameModel");
 const User = require("../models/UserModel");
+const { sanitizeObject } = require("../utils/sanitize");
 
 async function getAllGames(req, res, next) {
   try {
@@ -12,7 +13,15 @@ async function getAllGames(req, res, next) {
 
 async function createGame(req, res, next) {
   try {
-    const newGame = new Game(req.body);
+    const allowedFields = ["name", "description", "category", "customCategory", "maxPlayers", "minPlayers"];
+    const sanitized = sanitizeObject(req.body, allowedFields);
+    
+    const newGame = new Game({
+      ...sanitized,
+      createdBy: req.user._id,
+      isCustom: true
+    });
+    
     await newGame.save();
     res.status(201).json({ message: "Game created", data: newGame });
   } catch (err) {
@@ -32,7 +41,23 @@ async function getGameById(req, res, next) {
 
 async function updateGame(req, res, next) {
   try {
-    const updated = await Game.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const allowedFields = ["name", "description", "category", "customCategory", "maxPlayers", "minPlayers"];
+    const updates = sanitizeObject(req.body, allowedFields);
+    
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ message: "No valid fields to update" });
+    }
+    
+    const updated = await Game.findByIdAndUpdate(
+      req.params.id,
+      updates,
+      { new: true, runValidators: true }
+    );
+    
+    if (!updated) {
+      return res.status(404).json({ message: "Game not found" });
+    }
+    
     res.json({ message: "Game updated", data: updated });
   } catch (err) {
     next(err);

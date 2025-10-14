@@ -3,6 +3,7 @@ const Game = require("../models/GameModel");
 const Session = require("../models/SessionModel");
 const mongoose = require("mongoose");
 const logUserActivity = require("../utils/logActivity");
+const { sanitizeObject } = require("../utils/sanitize");
 
 // GET /users/me
 async function getLoggedInUser(req, res, next) {
@@ -49,7 +50,28 @@ async function getUserById(req, res, next) {
 // PUT /users/:id
 async function updateUser(req, res, next) {
   try {
-    const updated = await User.findByIdAndUpdate(req.params.id, req.body, { new: true }).select("-password");
+    // Whitelist: only these fields can be updated by users
+    const allowedFields = ["firstName", "lastName", "profileIcon"];
+    
+    // Sanitize the allowed fields
+    const updates = sanitizeObject(req.body, allowedFields);
+    
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ 
+        message: "No valid fields to update" 
+      });
+    }
+    
+    const updated = await User.findByIdAndUpdate(
+      req.params.id,
+      updates,
+      { new: true, runValidators: true }
+    ).select("-password");
+    
+    if (!updated) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    
     await logUserActivity(req.user._id, "Updated Profile");
     res.json({ message: "User updated", data: updated });
   } catch (err) {

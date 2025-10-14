@@ -6,6 +6,7 @@ const logUserActivity = require("../utils/logActivity");
 const User = require("../models/UserModel");
 const Notification = require("../models/NotificationModel");
 const NotificationTypes = require("../constants/notificationTypes");
+const { sanitizeObject, sanitizeArray, sanitizeString } = require("../utils/sanitize");
 
 // GET /sessions
 async function getAllSessions(req, res, next) {
@@ -28,9 +29,15 @@ async function createSession(req, res, next) {
       return res.status(400).json({ message: "Game and players are required." });
     }
 
+    // Sanitize session-level fields
+    const sanitizedNotes = typeof notes === "string" ? sanitizeString(notes) : notes;
+
+    // Sanitize player array (names and emails)
+    const sanitizedPlayers = sanitizeArray(players || [], ["name", "email"]);
+
     let allConfirmed = true;
 
-    for (const player of players) {
+    for (const player of sanitizedPlayers) {
       if (!player.user) {
         // Guest players are auto-confirmed
         player.confirmed = true;
@@ -60,8 +67,8 @@ async function createSession(req, res, next) {
 
     const session = new Session({
       game,
-      players,
-      notes,
+      players: sanitizedPlayers,  // Use sanitized version
+      notes: sanitizedNotes,       // Use sanitized version
       matchStatus,
       createdBy: req.user._id,
       date: date || Date.now()
@@ -72,7 +79,7 @@ async function createSession(req, res, next) {
     // Notify registered players (excluding creator) that they were invited
     try {
       const creatorId = req.user._id.toString();
-      const registered = (players || []).filter(
+      const registered = (sanitizedPlayers || []).filter(
         p => p.user && p.user.toString() !== creatorId
       );
       if (registered.length) {
@@ -99,7 +106,7 @@ async function createSession(req, res, next) {
 // Helper
 async function sendGuestInviteEmail(email, name = "Player") {
   const html = `
-    <h3>You’ve been invited to a game on Game Tracker!</h3>
+    <h3>You've been invited to a game on Game Tracker!</h3>
     <p>Hi ${name},</p>
     <p>You were added to a match as a guest. To track your own stats and matches, create an account below:</p>
     <a href="https://gy-gametracker.netlify.app/signup">Sign up and claim your games</a>
@@ -129,12 +136,31 @@ async function updateSession(req, res, next) {
     const session = await Session.findById(req.params.id);
     if (!session) return res.status(404).json({ message: "Session not found." });
 
-    const { game, players, notes, date, matchStatus } = req.body;
+    const { game, players, notes, date } = req.body;
+
+    // Sanitize if provided
+    const sanitizedNotes = notes !== undefined && typeof notes === "string" 
+      ? sanitizeString(notes) 
+      : notes;
+      
+    const sanitizedPlayers = players !== undefined 
+      ? sanitizeArray(players, ["name", "email"])
+      : undefined;
+
     if (game !== undefined) session.game = game;
-    if (players !== undefined) session.players = players;
-    if (notes !== undefined) session.notes = notes;
+    if (sanitizedNotes !== undefined) session.notes = sanitizedNotes;
     if (date !== undefined) session.date = date;
-    if (matchStatus !== undefined) session.matchStatus = matchStatus;
+
+    if (sanitizedPlayers !== undefined) {
+      session.players = sanitizedPlayers.map(p => ({
+        ...p,
+        confirmed: !p.user || false // Only guests auto-confirmed
+      }));
+      
+      // Recalculate matchStatus
+      const anyUnconfirmed = session.players.some(p => p.user && !p.confirmed);
+      session.matchStatus = anyUnconfirmed ? "Pending" : "Confirmed";
+    }
 
     session.lastEditedBy = req.user._id;
 
@@ -234,7 +260,6 @@ async function confirmSession(req, res, next) {
 }
 
 // POST /sessions/:id/decline
-// Minimal: log activity + notify creator (does not change session players array).
 async function declineSession(req, res, next) {
   try {
     const session = await Session.findById(req.params.id).populate("createdBy", "firstName lastName email");
@@ -297,7 +322,7 @@ async function remindMatchConfirmation(req, res, next) {
 
       const html = `
         <p>Hi ${name},</p>
-        <p>You’ve been added to a game on Game Tracker but haven’t confirmed your result yet.</p>
+        <p>You've been added to a game on Game Tracker but haven't confirmed your result yet.</p>
         <a href="https://gy-gametracker.netlify.app/matches/${session._id}">Click here to review and confirm</a>.
       `;
 
