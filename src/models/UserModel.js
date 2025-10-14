@@ -1,7 +1,6 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 const { friendRequestSchema } = require("./subdocuments/FriendRequestSchema");
-const NotificationTypes = require("../constants/notificationTypes");
 
 
 const userSchema = new mongoose.Schema({
@@ -43,20 +42,6 @@ const userSchema = new mongoose.Schema({
   },
 
   isSuspended: { type: Boolean, default: false },
-
-  notifications: [
-    {
-      type: {
-        type: String,
-        enum: Object.values(NotificationTypes), // synced with NotificationModel
-        required: true
-      },
-      from: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-      message: String,
-      isRead: { type: Boolean, default: false },
-      date: { type: Date, default: Date.now }
-    }
-  ],
 
   activityLogs: [
     {
