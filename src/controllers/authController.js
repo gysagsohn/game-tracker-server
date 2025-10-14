@@ -167,6 +167,7 @@ async function resetPassword(req, res, next) {
       return res.status(400).json({ message: "Missing token or password." });
     }
 
+    // Verify JWT token structure
     let payload;
     try {
       payload = jwt.verify(token, process.env.JWT_SECRET);
@@ -177,20 +178,37 @@ async function resetPassword(req, res, next) {
     const user = await User.findById(payload.id);
     if (!user) return res.status(404).json({ message: "User not found." });
 
+    // Check if this is a Google account
     if (user.authProvider !== "local") {
       return res.status(400).json({ message: "This account uses Google sign-in. Use Google to log in." });
     }
 
+    // SECURITY: Validate the token matches the one in database
+    if (!user.resetPasswordToken || user.resetPasswordToken !== token) {
+      return res.status(400).json({ 
+        message: "Invalid or already-used token. Please request a new password reset." 
+      });
+    }
+
+    // SECURITY: Check if token has expired
+    if (!user.resetPasswordExpires || Date.now() > user.resetPasswordExpires) {
+      return res.status(400).json({ 
+        message: "Token has expired. Please request a new password reset." 
+      });
+    }
+
+    // All validations passed - update password
     user.password = password;                   // pre-save hook will hash it
-    user.resetPasswordToken = undefined;        // clear DB token (if used)
-    user.resetPasswordExpires = undefined;
+    user.resetPasswordToken = undefined;        // clear DB token
+    user.resetPasswordExpires = undefined;      // clear expiry
     await user.save();
 
+    // Generate new login token
     const freshToken = createToken(user);
     const safeUser = await User.findById(user._id).select("-password").lean();
 
     return res.json({
-      message: "Password has been reset.",
+      message: "Password has been reset successfully.",
       token: freshToken,
       user: safeUser,
     });
