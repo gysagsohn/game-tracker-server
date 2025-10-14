@@ -54,7 +54,9 @@ const userSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-
+// Add indexes for query performance
+userSchema.index({ friends: 1 });
+userSchema.index({ "friendRequests.user": 1, "friendRequests.status": 1 });
 
 // Hash password before saving (local only)
 userSchema.pre("save", async function (next) {

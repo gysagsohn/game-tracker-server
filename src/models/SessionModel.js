@@ -83,5 +83,12 @@ const sessionSchema = new mongoose.Schema({
   timestamps: true
 });
 
+// Add indexes for query performance
+sessionSchema.index({ "players.user": 1, date: -1 });
+sessionSchema.index({ createdBy: 1, date: -1 });
+sessionSchema.index({ matchStatus: 1 });
+sessionSchema.index({ game: 1 });
+sessionSchema.index({ date: -1 });
+
 const Session = mongoose.model("Session", sessionSchema);
 module.exports = Session;
