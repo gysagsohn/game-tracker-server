@@ -1,4 +1,3 @@
-// src/controllers/friendController.js
 const User = require("../models/UserModel");
 const Notification = require("../models/NotificationModel");
 const NotificationTypes = require("../constants/notificationTypes");

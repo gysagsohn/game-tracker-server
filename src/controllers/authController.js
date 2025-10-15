@@ -1,4 +1,3 @@
-// src/controllers/authController.js
 const User = require("../models/UserModel");
 const jwt = require("jsonwebtoken");
 const sendEmail = require("../utils/sendEmail");

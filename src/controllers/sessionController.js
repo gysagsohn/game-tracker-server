@@ -1,4 +1,3 @@
-// src/controllers/sessionController.js
 const Session = require("../models/SessionModel");
 const sendEmail = require("../utils/sendEmail");
 const rateLimitCache = {};
