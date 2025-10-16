@@ -3,6 +3,7 @@ const Notification = require("../models/NotificationModel");
 const NotificationTypes = require("../constants/notificationTypes");
 const sendEmail = require("../utils/sendEmail");
 const logUserActivity = require("../utils/logActivity");
+const { FRONTEND_URL } = require("../utils/urls");
 
 // Send a friend request
 async function sendFriendRequest(req, res, next) {
@@ -35,7 +36,7 @@ async function sendFriendRequest(req, res, next) {
       recipient: recipient._id,
       sender: currentUserId,
       type: NotificationTypes.FRIEND_REQUEST,
-      message: `${sender.firstName} sent you a friend request. <a href="https://gy-gametracker.netlify.app/friends?tab=requests">View</a>`
+      message: `${sender.firstName} sent you a friend request. <a href="${FRONTEND_URL}/friends?tab=requests">View</a>`
     });
 
     await logUserActivity(currentUserId, "Sent Friend Request", { to: recipient._id });
@@ -44,7 +45,7 @@ async function sendFriendRequest(req, res, next) {
     const html = `
       <p>Hi ${recipient.firstName || ""},</p>
       <p><strong>${sender.firstName || ""} ${sender.lastName || ""}</strong> sent you a friend request on Game Tracker.</p>
-      <p><a href="https://gy-gametracker.netlify.app/friends?tab=requests">Click here to view and respond</a>.</p>
+      <p><a href="${FRONTEND_URL}/friends?tab=requests">Click here to view and respond</a>.</p>
     `;
     try {
       await sendEmail(recipient.email, "New Friend Request – Game Tracker", html);

@@ -1,14 +1,22 @@
 const dotenv = require("dotenv");
 dotenv.config();
 
-const validateEnv = require("./config/validateEnv"); 
-validateEnv(); 
+const validateEnv = require("./config/validateEnv");
+validateEnv();
 
 const { app } = require("./server.js");
 const { databaseConnect } = require("./config/database.js");
 
 const PORT = process.env.PORT || 3001;
 
-app.listen(PORT, () => {
-	databaseConnect();
-});
+(async () => {
+  try {
+    await databaseConnect(); // ensure DB is up first
+    app.listen(PORT, () => {
+      console.log(`Game Tracker API listening on port ${PORT}`);
+    });
+  } catch (err) {
+    console.error("Failed to start server:", err?.message || err);
+    process.exit(1);
+  }
+})();
