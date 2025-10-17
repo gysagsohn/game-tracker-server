@@ -1,4 +1,3 @@
-// src/controllers/sessionController.js
 const Session = require("../models/SessionModel");
 const sendEmail = require("../utils/sendEmail");
 const rateLimitCache = {};
@@ -6,8 +5,9 @@ const logUserActivity = require("../utils/logActivity");
 const User = require("../models/UserModel");
 const Notification = require("../models/NotificationModel");
 const NotificationTypes = require("../constants/notificationTypes");
-const { sanitizeObject, sanitizeArray, sanitizeString } = require("../utils/sanitize");
+const { sanitizeArray, sanitizeString } = require("../utils/sanitize");
 const { FRONTEND_URL } = require("../utils/urls");
+const renderEmail = require("../utils/renderEmail");
 
 // GET /sessions
 async function getAllSessions(req, res, next) {
@@ -114,7 +114,16 @@ async function sendGuestInviteEmail(email, name = "Player") {
     <p>You were added to a match as a guest. To track your own stats and matches, create an account below:</p>
     <a href="${FRONTEND_URL}/signup">Sign up and claim your games</a>
   `;
-  const { ok } = await sendEmail(email, "Game Tracker Invite – Claim Your Games", html);
+  const wrapped = renderEmail({
+    title: "You’re invited to a game!",
+    preheader: "Create an account to claim your matches and stats",
+    bodyHtml: `
+      <p>Hi ${name},</p>
+      <p>You were added to a match as a guest. Create an account to track your stats and claim games.</p>
+      <p><a class="button" href="${FRONTEND_URL}/signup">Sign up & claim your games</a></p>
+    `
+  });
+  const { ok } = await sendEmail(email, "Game Tracker Invite – Claim Your Games", wrapped);
   return ok;
 }
 
@@ -325,13 +334,17 @@ async function remindMatchConfirmation(req, res, next) {
     for (const player of unconfirmed) {
       const email = player.user.email;
       const name = player.user.firstName || player.user.name;
-
-      const html = `
-        <p>Hi ${name},</p>
-        <p>You've been added to a game on Game Tracker but haven't confirmed your result yet.</p>
-        <a href="${FRONTEND_URL}/matches/${session._id}">Click here to review and confirm</a>.
-      `;
-
+      const confirmLink = `${FRONTEND_URL}/matches/${session._id}`;
+      const html = renderEmail({
+        title: "Reminder: confirm your match",
+        preheader: "Please review and confirm your game result",
+        bodyHtml: `
+          <p>Hi ${name},</p>
+          <p>You’ve been added to a game but haven’t confirmed your result yet.</p>
+          <p><a class="button" href="${confirmLink}">Review & confirm</a></p>
+          <p class="muted">Direct link:<br/><span style="word-break:break-all">${confirmLink}</span></p>
+        `
+      });
       const { ok } = await sendEmail(email, "Reminder – Confirm Your Game Result", html);
       if (ok) reminderEmailsSent += 1;
     }

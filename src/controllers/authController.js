@@ -2,6 +2,7 @@ const User = require("../models/UserModel");
 const jwt = require("jsonwebtoken");
 const sendEmail = require("../utils/sendEmail");
 const Session = require("../models/SessionModel");
+const renderEmail = require("../utils/renderEmail");
 
 // Helper: Create a JWT
 function createToken(user) {
@@ -12,13 +13,17 @@ function createToken(user) {
 async function sendVerificationEmail(user) {
   const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
   const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
-  const html = `
-    <h2>Email Verification</h2>
-    <p>Hi ${user.firstName},</p>
-    <p>Click below to verify your email:</p>
-    <a href="${verificationLink}">${verificationLink}</a>
-  `;
-  console.log("📩 VERIFY EMAIL TOKEN:", token);
+  const html = renderEmail({
+    title: "Verify your email",
+    preheader: "Confirm your address to finish setting up Game Tracker",
+    bodyHtml: `
+      <p>Hi ${user.firstName},</p>
+      <p>Click the button below to verify your email and finish setting up your account.</p>
+      <p><a class="button" href="${verificationLink}">Verify Email</a></p>
+      <p class="muted">If the button doesn’t work, paste this link in your browser:<br/>
+      <span style="word-break:break-all">${verificationLink}</span></p>
+    `
+  });
   const { ok } = await sendEmail(user.email, "Verify your email – Game Tracker", html);
   return ok;
 }
@@ -150,11 +155,18 @@ async function forgotPassword(req, res, next) {
     user.resetPasswordExpires = Date.now() + 15 * 60 * 1000;
     await user.save();
 
-    const html = `
-      <h2>Reset Your Password</h2>
-      <p>Click below to reset your password:</p>
-      <a href="${process.env.FRONTEND_URL}/reset-password?token=${token}">Reset Password</a>
-    `;
+    const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
+    const html = renderEmail({
+      title: "Reset your password",
+      preheader: "Use this link to reset your Game Tracker password",
+      bodyHtml: `
+        <p>We received a request to reset your password.</p>
+        <p><a class="button" href="${resetLink}">Reset Password</a></p>
+        <p class="muted">This link expires in 15 minutes. If you didn’t request this, you can ignore this email.</p>
+        <p class="muted">Direct link:<br/><span style="word-break:break-all">${resetLink}</span></p>
+      `
+    });
+    
     const { ok: emailSent } = await sendEmail(user.email, "Reset your Game Tracker password", html);
 
     res.json({ message: "If your email exists, a reset link has been sent.", data: user, emailSent });

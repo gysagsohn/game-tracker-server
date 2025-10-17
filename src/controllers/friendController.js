@@ -4,6 +4,7 @@ const NotificationTypes = require("../constants/notificationTypes");
 const sendEmail = require("../utils/sendEmail");
 const logUserActivity = require("../utils/logActivity");
 const { FRONTEND_URL } = require("../utils/urls");
+const renderEmail = require("../utils/renderEmail");
 
 // Send a friend request
 async function sendFriendRequest(req, res, next) {
@@ -42,11 +43,15 @@ async function sendFriendRequest(req, res, next) {
     await logUserActivity(currentUserId, "Sent Friend Request", { to: recipient._id });
 
     // Try sending email
-    const html = `
-      <p>Hi ${recipient.firstName || ""},</p>
-      <p><strong>${sender.firstName || ""} ${sender.lastName || ""}</strong> sent you a friend request on Game Tracker.</p>
-      <p><a href="${FRONTEND_URL}/friends?tab=requests">Click here to view and respond</a>.</p>
-    `;
+    const html = renderEmail({
+      title: "You’ve got a friend request",
+      preheader: `${sender.firstName} sent you a friend request`,
+      bodyHtml: `
+        <p>Hi ${recipient.firstName || ""},</p>
+        <p><strong>${sender.firstName || ""} ${sender.lastName || ""}</strong> sent you a friend request on Game Tracker.</p>
+        <p><a class="button" href="${FRONTEND_URL}/friends?tab=requests">View request</a></p>
+      `
+    });
     let emailSent = false;
     try {
       const { ok } = await sendEmail(recipient.email, "New Friend Request – Game Tracker", html);
