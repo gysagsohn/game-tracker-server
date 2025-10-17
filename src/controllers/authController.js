@@ -19,7 +19,8 @@ async function sendVerificationEmail(user) {
     <a href="${verificationLink}">${verificationLink}</a>
   `;
   console.log("📩 VERIFY EMAIL TOKEN:", token);
-  await sendEmail(user.email, "Verify your email – Game Tracker", html);
+  const { ok } = await sendEmail(user.email, "Verify your email – Game Tracker", html);
+  return ok;
 }
 
 // Signup
@@ -55,14 +56,20 @@ async function signup(req, res, next) {
     );
     console.log(`Synced ${sessions.modifiedCount} guest match(es) to ${email}`);
 
-    await sendVerificationEmail(newUser);
+    const emailSent = await sendVerificationEmail(newUser);
 
-    const token = createToken(newUser);
-    res.status(201).json({ user: newUser, token });
+    // Do NOT return a login token yet; require verification first
+    const safeUser = await User.findById(newUser._id).select("-password");
+    return res.status(201).json({
+      message: "Account created. Please verify your email to continue.",
+      user: safeUser,
+      emailSent,
+    });
   } catch (err) {
     next(err);
   }
 }
+
 
 // Login
 async function login(req, res, next) {
@@ -120,8 +127,8 @@ async function resendVerificationEmail(req, res, next) {
     if (!user) return res.status(404).json({ message: "User not found." });
     if (user.isEmailVerified) return res.status(400).json({ message: "Email already verified." });
 
-    await sendVerificationEmail(user);
-    res.json({ message: "Verification email resent.", data: user });
+    const emailSent = await sendVerificationEmail(user);
+    res.json({ message: "Verification email resent.", data: user, emailSent });
   } catch (err) {
     next(err);
   }
@@ -135,9 +142,7 @@ async function forgotPassword(req, res, next) {
     if (!user) return res.status(404).json({ message: "User not found." });
 
     if (user.authProvider === "google" && !user.password) {
-      return res
-        .status(400)
-        .json({ message: "This account uses Google sign-in. Please continue with Google to access your account." });
+      return res.status(400).json({ message: "This account uses Google sign-in. Please continue with Google to access your account." });
     }
 
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "15m" });
@@ -150,9 +155,9 @@ async function forgotPassword(req, res, next) {
       <p>Click below to reset your password:</p>
       <a href="${process.env.FRONTEND_URL}/reset-password?token=${token}">Reset Password</a>
     `;
-    await sendEmail(user.email, "Reset your Game Tracker password", html);
+    const { ok: emailSent } = await sendEmail(user.email, "Reset your Game Tracker password", html);
 
-    res.json({ message: "Reset link sent to your email.", data: user });
+    res.json({ message: "If your email exists, a reset link has been sent.", data: user, emailSent });
   } catch (err) {
     next(err);
   }

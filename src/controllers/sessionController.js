@@ -1,3 +1,4 @@
+// src/controllers/sessionController.js
 const Session = require("../models/SessionModel");
 const sendEmail = require("../utils/sendEmail");
 const rateLimitCache = {};
@@ -36,6 +37,7 @@ async function createSession(req, res, next) {
     const sanitizedPlayers = sanitizeArray(players || [], ["name", "email"]);
 
     let allConfirmed = true;
+    let guestEmailsSent = 0;
 
     for (const player of sanitizedPlayers) {
       if (!player.user) {
@@ -47,7 +49,8 @@ async function createSession(req, res, next) {
           const sentToday = rateLimitCache[key] || 0;
 
           if (sentToday < 3) {
-            await sendGuestInviteEmail(player.email, player.name);
+            const ok = await sendGuestInviteEmail(player.email, player.name);
+            if (ok) guestEmailsSent += 1;
             rateLimitCache[key] = sentToday + 1;
           } else {
             console.log(`Invite limit reached for ${player.email}`);
@@ -97,7 +100,7 @@ async function createSession(req, res, next) {
       console.warn("Failed to emit MATCH_INVITE notifications:", e.message);
     }
 
-    res.status(201).json({ message: "Match created", data: session });
+    res.status(201).json({ message: "Match created", data: session, guestEmailsSent });
   } catch (err) {
     next(err);
   }
@@ -111,7 +114,8 @@ async function sendGuestInviteEmail(email, name = "Player") {
     <p>You were added to a match as a guest. To track your own stats and matches, create an account below:</p>
     <a href="${FRONTEND_URL}/signup">Sign up and claim your games</a>
   `;
-  await sendEmail(email, "Game Tracker Invite – Claim Your Games", html);
+  const { ok } = await sendEmail(email, "Game Tracker Invite – Claim Your Games", html);
+  return ok;
 }
 
 // GET /sessions/:id
@@ -139,11 +143,11 @@ async function updateSession(req, res, next) {
     const { game, players, notes, date } = req.body;
 
     // Sanitize if provided
-    const sanitizedNotes = notes !== undefined && typeof notes === "string" 
-      ? sanitizeString(notes) 
+    const sanitizedNotes = notes !== undefined && typeof notes === "string"
+      ? sanitizeString(notes)
       : notes;
-      
-    const sanitizedPlayers = players !== undefined 
+
+    const sanitizedPlayers = players !== undefined
       ? sanitizeArray(players, ["name", "email"])
       : undefined;
 
@@ -156,7 +160,7 @@ async function updateSession(req, res, next) {
         ...p,
         confirmed: !p.user || false // Only guests auto-confirmed
       }));
-      
+
       // Recalculate matchStatus
       const anyUnconfirmed = session.players.some(p => p.user && !p.confirmed);
       session.matchStatus = anyUnconfirmed ? "Pending" : "Confirmed";
@@ -205,7 +209,7 @@ async function updateSession(req, res, next) {
 async function deleteSession(req, res, next) {
   try {
     await Session.findByIdAndDelete(req.params.id);
-    res.status(204).json({ message: "Session deleted", data: null });
+    res.status(204).end(); // proper empty 204
   } catch (err) {
     next(err);
   }
@@ -316,6 +320,8 @@ async function remindMatchConfirmation(req, res, next) {
       return res.status(400).json({ message: "No unconfirmed users to remind." });
     }
 
+    let reminderEmailsSent = 0;
+
     for (const player of unconfirmed) {
       const email = player.user.email;
       const name = player.user.firstName || player.user.name;
@@ -326,7 +332,8 @@ async function remindMatchConfirmation(req, res, next) {
         <a href="${FRONTEND_URL}/matches/${session._id}">Click here to review and confirm</a>.
       `;
 
-      await sendEmail(email, "Reminder – Confirm Your Game Result", html);
+      const { ok } = await sendEmail(email, "Reminder – Confirm Your Game Result", html);
+      if (ok) reminderEmailsSent += 1;
     }
 
     // Emit in-app reminders too
@@ -352,7 +359,11 @@ async function remindMatchConfirmation(req, res, next) {
       remindedCount: unconfirmed.length
     });
 
-    res.json({ message: "Reminder emails sent", data: { count: unconfirmed.length } });
+    res.json({
+      message: "Reminder emails processed",
+      data: { count: unconfirmed.length },
+      reminderEmailsSent
+    });
   } catch (err) {
     next(err);
   }
@@ -372,6 +383,7 @@ async function getMyPendingSessions(req, res, next) {
   }
 }
 
+
 module.exports = {
   getAllSessions,
   getSessionById,
@@ -383,3 +395,5 @@ module.exports = {
   remindMatchConfirmation,
   getMyPendingSessions
 };
+
+

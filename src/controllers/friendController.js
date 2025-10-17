@@ -47,13 +47,15 @@ async function sendFriendRequest(req, res, next) {
       <p><strong>${sender.firstName || ""} ${sender.lastName || ""}</strong> sent you a friend request on Game Tracker.</p>
       <p><a href="${FRONTEND_URL}/friends?tab=requests">Click here to view and respond</a>.</p>
     `;
+    let emailSent = false;
     try {
-      await sendEmail(recipient.email, "New Friend Request – Game Tracker", html);
+      const { ok } = await sendEmail(recipient.email, "New Friend Request – Game Tracker", html);
+      emailSent = ok;
     } catch (emailErr) {
       console.warn("Friend email failed:", emailErr.message);
     }
 
-    res.json({ message: "Friend request sent.", data: { to: recipient._id } });
+    res.json({ message: "Friend request sent.", data: { to: recipient._id }, emailSent });
   } catch (err) {
     next(err);
   }
