@@ -84,79 +84,105 @@ async function deleteUser(req, res, next) {
   try {
     await User.findByIdAndDelete(req.params.id);
     res.status(204).json({ message: "User deleted", data: null });
-  } catch (err) {
-    next(err);
+    res.status(204).end();
+    } catch (err) {
+      next(err);
+    }
   }
-}
 
 // GET /users/:id/stats
 async function getUserStats(req, res, next) {
   try {
     const userId = new mongoose.Types.ObjectId(req.params.id);
-    const sessions = await Session.find({ "players.user": userId }).populate("game players.user");
+    const sessions = await Session.find({ "players.user": userId })
+      .populate("game players.user");
 
     if (sessions.length === 0) {
       return res.json({ message: "No matches found", data: {} });
     }
 
     let wins = 0, losses = 0, draws = 0;
-    const gameCounts = {}, opponentCounts = {}, opponentWins = {};
+    const gameCounts = {};
+    const opponentCounts = {};
+    const opponentWins = {};
 
     for (const session of sessions) {
-      const me = session.players.find(p => p.user && p.user._id.equals(userId));
+      // Skip sessions that somehow have no players array
+      const players = Array.isArray(session.players) ? session.players : [];
+
+      // Find "me" safely
+      const me = players.find(p => p.user && p.user._id && p.user._id.equals(userId));
       if (!me) continue;
 
+      // Tally W/L/D safely
       if (me.result === "Win") wins++;
-      if (me.result === "Loss") losses++;
-      if (me.result === "Draw") draws++;
+      else if (me.result === "Loss") losses++;
+      else if (me.result === "Draw") draws++;
 
-      const title = session.game.name;
+      // Game title (handle deleted/missing game)
+      const title = session?.game?.name || "Unknown Game";
       gameCounts[title] = (gameCounts[title] || 0) + 1;
 
-      for (const p of session.players) {
-        if (!p.user || p.user._id.equals(userId)) continue;
+      // Opponent tallies
+      for (const p of players) {
+        if (!p.user || !p.user._id || p.user._id.equals(userId)) continue;
         const oppId = p.user._id.toString();
         opponentCounts[oppId] = (opponentCounts[oppId] || 0) + 1;
         if (me.result === "Win") opponentWins[oppId] = (opponentWins[oppId] || 0) + 1;
       }
     }
 
+    // Derive most played game (string name)
     const mostPlayedGame = Object.entries(gameCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
-    const favoriteOpponentId = Object.entries(opponentCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
-    const favoriteOpponent = sessions.flatMap(s => s.players).find(p => p.user && p.user._id.toString() === favoriteOpponentId)?.user;
 
+    // Favorite opponent by frequency
+    const favoriteOpponentId = Object.entries(opponentCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+    const favoriteOpponent = favoriteOpponentId
+      ? sessions
+          .flatMap(s => Array.isArray(s.players) ? s.players : [])
+          .find(p => p.user && p.user._id && p.user._id.toString() === favoriteOpponentId)?.user
+      : null;
+
+    // Best win-rate opponent (min 2 games)
     const winRateOpponents = Object.entries(opponentCounts)
       .filter(([_, count]) => count >= 2)
       .map(([id, total]) => ({
         opponentId: id,
-        winRate: Math.round((opponentWins[id] || 0) / total * 100)
+        winRate: Math.round(((opponentWins[id] || 0) / total) * 100),
       }))
       .sort((a, b) => b.winRate - a.winRate);
 
     const topOpponentId = winRateOpponents[0]?.opponentId;
-    const favoriteWinOpponent = sessions.flatMap(s => s.players).find(p => p.user && p.user._id.toString() === topOpponentId)?.user;
+    const favoriteWinOpponent = topOpponentId
+      ? sessions
+          .flatMap(s => Array.isArray(s.players) ? s.players : [])
+          .find(p => p.user && p.user._id && p.user._id.toString() === topOpponentId)?.user
+      : null;
 
     const totalMatches = wins + losses + draws;
 
-    res.json({
+    return res.json({
       message: "User stats calculated",
       data: {
         totalMatches,
         wins,
         losses,
         draws,
-        mostPlayedGame,
-        favoriteOpponent: favoriteOpponent ? {
-          name: `${favoriteOpponent.firstName} ${favoriteOpponent.lastName}`,
-          matchesTogether: opponentCounts[favoriteOpponentId]
-        } : null,
-        favoriteWinOpponent: favoriteWinOpponent ? {
-          name: `${favoriteWinOpponent.firstName} ${favoriteWinOpponent.lastName}`,
-          winRate: winRateOpponents[0]?.winRate + "%"
-        } : null
-      }
+        mostPlayedGame, // string (may be "Unknown Game")
+        favoriteOpponent: favoriteOpponent
+          ? {
+              name: `${favoriteOpponent.firstName || ""} ${favoriteOpponent.lastName || ""}`.trim(),
+              matchesTogether: favoriteOpponentId ? opponentCounts[favoriteOpponentId] : 0,
+            }
+          : null,
+        favoriteWinOpponent: favoriteWinOpponent
+          ? {
+              name: `${favoriteWinOpponent.firstName || ""} ${favoriteWinOpponent.lastName || ""}`.trim(),
+              winRate: (winRateOpponents[0]?.winRate ?? 0) + "%",
+            }
+          : null,
+      },
     });
-
   } catch (err) {
     next(err);
   }
