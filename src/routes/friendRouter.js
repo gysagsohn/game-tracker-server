@@ -3,17 +3,18 @@ const router = express.Router();
 
 const auth = require("../middleware/authMiddleware"); // <- your auth middleware
 const ctrl = require("../controllers/friendController");
-const rateLimit = require("express-rate-limit");
+const makeLimiter = require("../utils/makeLimiter");
 
 // All routes below require auth
 router.use(auth);
 
 // Rate limit sending friend requests
-const friendRequestLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 5,
-  message: "Too many friend requests sent. Please try again later."
-});
+const friendRequestLimiter = makeLimiter({
+   envPrefix: "FRIEND",
+   defaultMax: 5,
+   defaultWindowMs: 60 * 60 * 1000,
+   message: "Too many friend requests sent. Please try again later.",
+ });
 
 // Friends
 router.get("/list/:id", ctrl.getFriendList);

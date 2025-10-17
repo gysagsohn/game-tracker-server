@@ -14,6 +14,8 @@ const ALLOWED_ORIGINS = [
   "http://localhost:5173",           // local dev (if you use Vite)
 ];
 
+console.log("CORS allowlist:", ALLOWED_ORIGINS.filter(Boolean));
+
 // Optional: allow Netlify preview deploys too
 const NETLIFY_PREVIEWS = /\.netlify\.app$/;
 
@@ -61,10 +63,15 @@ app.all("*", (req, res) => {
 
 // Global error handler (CORS headers will still be present)
 app.use((error, req, res, next) => {
-  res.status(error.status || 500).json({
-    message: "Something went wrong",
-    error: error.message,
-  });
+  const status = error.status || 500;
+  const isProd = process.env.NODE_ENV === "production";
+  const payload = {
+    message: isProd ? "Something went wrong" : (error.message || "Something went wrong"),
+  };
+  if (!isProd) {
+    payload.stack = error.stack;
+  }
+  res.status(status).json(payload);
 });
 
 module.exports = { app };
