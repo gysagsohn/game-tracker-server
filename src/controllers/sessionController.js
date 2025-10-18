@@ -8,6 +8,7 @@ const NotificationTypes = require("../constants/notificationTypes");
 const { sanitizeArray, sanitizeString } = require("../utils/sanitize");
 const { FRONTEND_URL } = require("../utils/urls");
 const renderEmail = require("../utils/renderEmail");
+const { EMAIL } = require("../constants/limits")
 
 // GET /sessions
 async function getAllSessions(req, res, next) {
@@ -45,7 +46,7 @@ async function createSession(req, res, next) {
           const key = `${player.email}_${new Date().toDateString()}`;
           const sentToday = rateLimitCache[key] || 0;
 
-          if (sentToday < 3) {
+          if (sentToday < EMAIL.GUEST_INVITES_PER_EMAIL_PER_DAY) {
             const ok = await sendGuestInviteEmail(player.email, player.name);
             if (ok) guestEmailsSent += 1;
             rateLimitCache[key] = sentToday + 1;
@@ -311,10 +312,10 @@ async function remindMatchConfirmation(req, res, next) {
       return res.status(400).json({ message: "This match is already confirmed." });
     }
 
-    const SIX_HOURS = 6 * 60 * 60 * 1000;
+    const REMINDER_COOLDOWN = EMAIL.MATCH_REMINDER_COOLDOWN_MS;
     const now = Date.now();
 
-    if (session.lastReminderSent && now - session.lastReminderSent.getTime() < SIX_HOURS) {
+    if (session.lastReminderSent && now - session.lastReminderSent.getTime() < REMINDER_COOLDOWN) {
       return res.status(429).json({ message: "Reminder already sent recently. Try again later." });
     }
 

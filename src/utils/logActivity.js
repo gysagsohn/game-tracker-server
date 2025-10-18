@@ -1,4 +1,5 @@
 const User = require("../models/UserModel");
+const { DATA } = require("../constants/limits"); 
 
 /**
  * Log user activity
@@ -14,8 +15,8 @@ async function logUserActivity(userId, action, metadata = {}) {
             metadata,
             createdAt: new Date()
           }],
-          $slice: -100 // Keep only the last 100 entries
-        }
+          $slice: -DATA.ACTIVITY_LOG_MAX_ENTRIES
+        } 
       }
     });
   } catch (err) {

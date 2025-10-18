@@ -1,9 +1,10 @@
 const makeLimiter = require("../utils/makeLimiter");
+const { RATE_LIMIT } = require("../constants/limits");
 
 const authLimiter = makeLimiter({
   envPrefix: "AUTH",
-  defaultMax: 5,
-  defaultWindowMs: 10 * 60 * 1000,
+  defaultMax: RATE_LIMIT.AUTH_MAX_REQUESTS,
+  defaultWindowMs: RATE_LIMIT.AUTH_WINDOW_MS,
   message: "Too many requests. Please try again later.",
 });
 

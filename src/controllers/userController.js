@@ -4,6 +4,7 @@ const Session = require("../models/SessionModel");
 const mongoose = require("mongoose");
 const logUserActivity = require("../utils/logActivity");
 const { sanitizeObject } = require("../utils/sanitize");
+const { DATA } = require("../constants/limits")
 
 // GET /users/me
 async function getLoggedInUser(req, res, next) {
@@ -193,7 +194,7 @@ async function searchUsers(req, res, next) {
     const query = req.query.q || "";
     const currentUserId = req.user._id.toString();
     
-    if (query.length < 2) {
+    if (query.length < DATA.SEARCH_QUERY_MIN_LENGTH) {
       return res.status(400).json({ 
         message: "Search query must be at least 2 characters" 
       });
@@ -214,7 +215,7 @@ async function searchUsers(req, res, next) {
       ]
     })
     .select("firstName lastName email profileIcon")
-    .limit(10); // Limit results to prevent overload
+    .limit(DATA.SEARCH_RESULTS_MAX); // Limit results to prevent overload
 
     res.json({ 
       message: "Search results", 
