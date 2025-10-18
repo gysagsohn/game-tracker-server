@@ -83,7 +83,6 @@ async function updateUser(req, res, next) {
 async function deleteUser(req, res, next) {
   try {
     await User.findByIdAndDelete(req.params.id);
-    res.status(204).json({ message: "User deleted", data: null });
     res.status(204).end();
     } catch (err) {
       next(err);

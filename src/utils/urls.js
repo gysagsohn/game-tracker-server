@@ -1,4 +1,3 @@
-// src/utils/urls.js
 function trimTrailingSlash(s = "") {
   return s.replace(/\/+$/, "");
 }

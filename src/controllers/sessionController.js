@@ -26,9 +26,6 @@ async function getAllSessions(req, res, next) {
 async function createSession(req, res, next) {
   try {
     const { game, players, notes, date } = req.body;
-    if (!game || !players || players.length === 0) {
-      return res.status(400).json({ message: "Game and players are required." });
-    }
 
     // Sanitize session-level fields
     const sanitizedNotes = typeof notes === "string" ? sanitizeString(notes) : notes;

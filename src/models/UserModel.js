@@ -54,6 +54,8 @@ const userSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+userSchema.index({ "activityLogs.createdAt": -1 });
+
 // Add indexes for query performance
 userSchema.index({ friends: 1 });
 userSchema.index({ "friendRequests.user": 1, "friendRequests.status": 1 });
