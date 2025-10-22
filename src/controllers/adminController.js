@@ -98,7 +98,8 @@ async function searchUsers(req, res, next) {
   }
 }
 
-async function getUserStats(req, res, next) {
+
+async function getSystemUserStats(req, res, next) {
   try {
     const totalUsers = await User.countDocuments();
     const verifiedUsers = await User.countDocuments({ isEmailVerified: true });
@@ -224,9 +225,30 @@ async function resendVerificationAsAdmin(req, res, next) {
     if (!user) return res.status(404).json({ message: "User not found" });
     if (user.isEmailVerified) return res.status(400).json({ message: "Already verified" });
 
-    const sendVerificationEmail = require("../controllers/authController").sendVerificationEmail;
-    await sendVerificationEmail(user);
-    res.json({ message: "Verification email resent." });
+    // Import utilities
+    const sendEmail = require("../utils/sendEmail");
+    const jwt = require("jsonwebtoken");
+
+    // Generate verification token (1 hour expiry)
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
+    const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
+
+    // Send verification email with proper text and html
+    await sendEmail({
+      to: user.email,
+      subject: "Verify Your Email - Game Tracker",
+      text: `Hi ${user.firstName},\n\nPlease verify your email by clicking this link:\n${verificationUrl}\n\nThis link expires in 1 hour.\n\nThe Game Tracker Team`,
+      html: `
+        <h2>Verify Your Email</h2>
+        <p>Hi ${user.firstName},</p>
+        <p>Click the button below to verify your email address:</p>
+        <p><a href="${verificationUrl}" style="display: inline-block; padding: 12px 24px; background: #5865F2; color: white; text-decoration: none; border-radius: 8px;">Verify Email</a></p>
+        <p style="color: #666; font-size: 14px;">Or copy this link: ${verificationUrl}</p>
+        <p style="color: #999; font-size: 12px;">This link will expire in 1 hour.</p>
+      `
+    });
+
+    res.json({ message: "Verification email resent successfully." });
   } catch (err) {
     next(err);
   }
@@ -234,8 +256,13 @@ async function resendVerificationAsAdmin(req, res, next) {
 
 async function forceVerifyUser(req, res, next) {
   try {
-    const user = await User.findByIdAndUpdate(req.params.id, { isEmailVerified: true }, { new: true });
-    res.json(user);
+    const user = await User.findByIdAndUpdate(
+      req.params.id, 
+      { isEmailVerified: true }, 
+      { new: true }
+    ).select("-password");
+    
+    res.json({ message: "User email verified by admin", user });
   } catch (err) {
     next(err);
   }
@@ -244,9 +271,15 @@ async function forceVerifyUser(req, res, next) {
 async function toggleSuspendUser(req, res, next) {
   try {
     const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    
     user.isSuspended = !user.isSuspended;
     await user.save();
-    res.json({ message: user.isSuspended ? "User suspended" : "User reactivated" });
+    
+    res.json({ 
+      message: user.isSuspended ? "User suspended" : "User reactivated",
+      user: { id: user._id, isSuspended: user.isSuspended }
+    });
   } catch (err) {
     next(err);
   }
@@ -254,8 +287,10 @@ async function toggleSuspendUser(req, res, next) {
 
 async function getAllSessionsForAdmin(req, res, next) {
   try {
-    const sessions = await Session.find().populate("game players.user");
-    res.json(sessions);
+    const sessions = await Session.find()
+      .populate("game players.user")
+      .sort({ date: -1 });
+    res.json({ message: "All sessions", data: sessions });
   } catch (err) {
     next(err);
   }
@@ -271,7 +306,7 @@ module.exports = {
   updateSessionByAdmin,
   deleteSessionByAdmin,
   searchUsers,
-  getUserStats,
+  getSystemUserStats, 
   getGameStats,
   getSessionsByDateRange,
   getMatchCountsGrouped,

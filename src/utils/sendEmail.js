@@ -1,37 +1,31 @@
-// src/utils/sendEmail.js
-const nodemailer = require("nodemailer");
+const { Resend } = require('resend');
 
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 465,
-  secure: true, // SSL
-  auth: {
-    user: process.env.EMAIL_FROM,
-    pass: process.env.EMAIL_APP_PASSWORD,
-  },
-  // Add timeout and connection pooling
-  connectionTimeout: 10000, // 10 seconds
-  greetingTimeout: 10000,
-  pool: true,
-  maxConnections: 5,
-});
-/**
- * Send an email and return { ok: boolean, error?: string }
- */
-async function sendEmail(to, subject, html) {
-  const mailOptions = {
-    from: process.env.EMAIL_FROM,
-    to,
-    subject,
-    html,
-  };
+// Initialize Resend with API key
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+async function sendEmail({ to, subject, text, html }) {
+  // Validate required fields
+  if (!to || !subject || (!text && !html)) {
+    throw new Error('Missing required email fields: to, subject, and text/html');
+  }
 
   try {
-    await transporter.sendMail(mailOptions);
-    return { ok: true };
+    const result = await resend.emails.send({
+      from: 'Game Tracker <onboarding@resend.dev>', // Use Resend's test domain
+      to,
+      subject,
+      text: text || '',
+      html: html || text,
+    });
+
+    console.log(`✅ Email sent successfully to ${to} (ID: ${result.id})`);
+    return result;
   } catch (error) {
-    console.error("Email send failed:", error.message);
-    return { ok: false, error: error.message };
+    console.error('❌ Resend error:', {
+      message: error.message,
+      name: error.name,
+    });
+    throw new Error(`Failed to send email: ${error.message}`);
   }
 }
 

@@ -1,4 +1,3 @@
-// src/server.js
 const express = require("express");
 const cors = require("cors");
 const passport = require("passport");
@@ -49,15 +48,11 @@ app.use(cors(corsOptions));
 // Ensure preflight requests also use the same options
 app.options("*", cors(corsOptions));
 
-// ---------------------------------------------------------------------------
 // BODY PARSING + AUTH
-// ---------------------------------------------------------------------------
 app.use(express.json());
 app.use(passport.initialize());
 
-// ---------------------------------------------------------------------------
 // ROUTES
-// ---------------------------------------------------------------------------
 app.use("/users", require("./routes/userRouter"));
 app.use("/games", require("./routes/gameRouter"));
 app.use("/sessions", require("./routes/sessionRouter"));
@@ -65,9 +60,7 @@ app.use("/auth", require("./routes/authRouter"));
 app.use("/friends", require("./routes/friendRouter"));
 app.use("/admin", adminRouter);
 
-// ---------------------------------------------------------------------------
 // HEALTH CHECK + 404 FALLBACK
-// ---------------------------------------------------------------------------
 app.get("/", (req, res) => {
   res.json({ message: "Game Tracker API is running" });
 });
@@ -77,9 +70,7 @@ app.all("*", (req, res) => {
   res.status(404).json({ message: "404 Page not found." });
 });
 
-// ---------------------------------------------------------------------------
 // GLOBAL ERROR HANDLER
-// ---------------------------------------------------------------------------
 app.use((error, req, res, next) => {
   const status = error.status || 500;
   const isProd = process.env.NODE_ENV === "production";
