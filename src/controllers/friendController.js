@@ -37,7 +37,7 @@ async function sendFriendRequest(req, res, next) {
       recipient: recipient._id,
       sender: currentUserId,
       type: NotificationTypes.FRIEND_REQUEST,
-      message: `${sender.firstName} sent you a friend request. <a href="${FRONTEND_URL}/friends?tab=requests">View</a>`
+      message: `${sender.firstName} ${sender.lastName || ''} sent you a friend request.`
     });
 
     await logUserActivity(currentUserId, "Sent Friend Request", { to: recipient._id });
