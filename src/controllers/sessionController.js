@@ -90,7 +90,7 @@ async function createSession(req, res, next) {
             sender: req.user._id,
             type: NotificationTypes.MATCH_INVITE,
             message: `You've been added to a match.`,
-            sessionId: session._id
+            session: session._id
           }))
         );
       }
@@ -198,7 +198,7 @@ async function updateSession(req, res, next) {
             sender: req.user._id,
             type: NotificationTypes.MATCH_UPDATED,
             message: `Match was updated.`,
-            sessionId: session._id
+            session: session._id
           }))
         );
       }
@@ -257,7 +257,7 @@ async function confirmSession(req, res, next) {
           sender: req.user._id,
           type: NotificationTypes.MATCH_CONFIRMED,
           message: `A player confirmed the match.`,
-          sessionId: session._id
+          session: session._id
         });
       }
     } catch (e) {
@@ -273,31 +273,81 @@ async function confirmSession(req, res, next) {
 // POST /sessions/:id/decline
 async function declineSession(req, res, next) {
   try {
-    const session = await Session.findById(req.params.id).populate("createdBy", "firstName lastName email");
-    if (!session) return res.status(404).json({ message: "Match not found." });
+    const session = await Session.findById(req.params.id)
+      .populate("createdBy", "firstName lastName email")
+      .populate("players.user", "firstName lastName email");
+    
+    if (!session) {
+      return res.status(404).json({ message: "Match not found." });
+    }
 
     const userId = req.user._id.toString();
-    const isPlayer = session.players.some(p => p.user && p.user.toString() === userId);
-    if (!isPlayer) return res.status(403).json({ message: "You are not a registered player in this match." });
+    
+    // Find player index
+    const playerIndex = session.players.findIndex(
+      p => p.user && p.user._id.toString() === userId
+    );
+    
+    if (playerIndex === -1) {
+      return res.status(403).json({ message: "You are not a registered player in this match." });
+    }
+
+    // Get declining user info for notification
+    const decliningUser = await User.findById(userId).select("firstName lastName");
+    const declinerName = decliningUser 
+      ? `${decliningUser.firstName} ${decliningUser.lastName}`.trim()
+      : "A player";
+
+    // Remove the player from the match
+    session.players.splice(playerIndex, 1);
+    
+    // If no registered players left (only guests or empty), delete the match
+    const hasRegisteredPlayers = session.players.some(p => p.user);
+    
+    if (!hasRegisteredPlayers) {
+      await Session.findByIdAndDelete(req.params.id);
+      
+      await logUserActivity(
+        req.user._id, 
+        "Declined Match (Match Deleted - No Players)", 
+        { sessionId: session._id }
+      );
+      
+      return res.json({ 
+        message: "Match declined and deleted (no registered players remaining).",
+        matchDeleted: true
+      });
+    }
+
+    // Otherwise, save the updated session
+    await session.save();
+
+    // Recalculate match status after player removal
+    const anyUnconfirmed = session.players.some(p => p.user && !p.confirmed);
+    session.matchStatus = anyUnconfirmed ? "Pending" : "Confirmed";
+    await session.save();
 
     await logUserActivity(req.user._id, "Declined Match", { sessionId: session._id });
 
     // Notify creator that the user declined
     try {
-      if (session.createdBy) {
+      if (session.createdBy && session.createdBy._id.toString() !== userId) {
         await Notification.create({
           recipient: session.createdBy._id || session.createdBy,
           sender: req.user._id,
           type: NotificationTypes.MATCH_DECLINED,
-          message: `A player declined the match.`,
-          sessionId: session._id
+          message: `${declinerName} declined the match invitation.`,
+          session: session._id  
         });
       }
     } catch (e) {
       console.warn("Failed to emit MATCH_DECLINED notification:", e.message);
     }
 
-    return res.json({ message: "You have declined this match." });
+    return res.json({ 
+      message: "You have declined this match.",
+      data: session 
+    });
   } catch (err) {
     next(err);
   }
@@ -355,7 +405,7 @@ async function remindMatchConfirmation(req, res, next) {
           sender: req.user._id,
           type: NotificationTypes.MATCH_REMINDER,
           message: `Reminder to confirm your match.`,
-          sessionId: session._id
+          session: session._id
         }))
       );
     } catch (e) {

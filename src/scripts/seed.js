@@ -90,7 +90,7 @@ async function seed() {
     console.log(`  [EXISTS]  Admin user: ${adminEmail}`);
   } else {
     const admin = await User.create({
-      firstName: "Gy",
+      firstName: "Admin Gy",
       lastName: "Sohn",
       email: adminEmail,
       password: "Admin123!", // CHANGE THIS PASSWORD AFTER FIRST LOGIN
