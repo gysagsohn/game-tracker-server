@@ -53,12 +53,13 @@ app.use(express.json());
 app.use(passport.initialize());
 
 // ROUTES
-app.use("/users", require("./routes/userRouter"));
-app.use("/games", require("./routes/gameRouter"));
-app.use("/sessions", require("./routes/sessionRouter"));
-app.use("/auth", require("./routes/authRouter"));
-app.use("/friends", require("./routes/friendRouter"));
+app.use("/api/users", require("./routes/userRouter"));
+app.use("/api/games", require("./routes/gameRouter"));
+app.use("/api/sessions", require("./routes/sessionRouter"));
+app.use("/api/auth", require("./routes/authRouter"));
+app.use("/api/friends", require("./routes/friendRouter"));
 app.use("/admin", adminRouter);
+
 
 // HEALTH CHECK + 404 FALLBACK
 app.get("/", (req, res) => {

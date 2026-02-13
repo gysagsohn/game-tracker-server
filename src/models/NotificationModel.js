@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const NotificationTypes = require("../constants/notificationTypes"); // ensure this file name matches exactly
+const NotificationTypes = require("../constants/notificationTypes");
 
 const { Schema } = mongoose;
 
@@ -21,22 +21,21 @@ const NotificationSchema = new Schema(
       required: true,
     },
 
-    // Preferred structured fields
-    title: { type: String },         // UI-friendly title (optional)
-    description: { type: String },   // UI-friendly body (optional)
-    link: { type: String },          // optional deep link
+    // Message content
+    message: { 
+      type: String,
+      required: true 
+    },
 
-    // Legacy HTML message (kept for backwards compatibility; optional)
-    message: { type: String },
-
-    // Match-related reference (optional)
-    sessionId: {
+    // Match-related reference (using 'session' to match frontend)
+    session: {
       type: Schema.Types.ObjectId,
       ref: "Session",
       default: null,
     },
 
-    isRead: {
+    // Read status (using 'read' to match frontend)
+    read: {
       type: Boolean,
       default: false,
     },
@@ -46,6 +45,6 @@ const NotificationSchema = new Schema(
 
 // Helpful indexes for faster list/unread queries
 NotificationSchema.index({ recipient: 1, createdAt: -1 });
-NotificationSchema.index({ recipient: 1, isRead: 1 });
+NotificationSchema.index({ recipient: 1, read: 1 });
 
 module.exports = mongoose.model("Notification", NotificationSchema);

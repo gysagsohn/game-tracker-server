@@ -202,7 +202,7 @@ async function getNotifications(req, res, next) {
     const skip = (page - 1) * limit;
 
     const baseQuery = { recipient: userId };
-    const unreadQuery = { ...baseQuery, isRead: false };
+    const unreadQuery = { ...baseQuery, read: false };  
 
     const [unreadCount, total, items] = await Promise.all([
       Notification.countDocuments(unreadQuery),
@@ -228,12 +228,16 @@ async function getNotifications(req, res, next) {
 // Mark one notification read
 async function markNotificationAsRead(req, res, next) {
   try {
+    
     const notification = await Notification.findOneAndUpdate(
       { _id: req.params.id, recipient: req.user.id },
-      { isRead: true },
+      { read: true },
       { new: true }
     );
-    if (!notification) return res.status(404).json({ message: "Notification not found" });
+    
+    if (!notification) {
+      return res.status(404).json({ message: "Notification not found" });
+    }
     res.json({ message: "Notification marked as read", data: notification });
   } catch (err) {
     next(err);
@@ -245,8 +249,8 @@ async function readAllNotifications(req, res, next) {
   try {
     const userId = req.user.id;
     const result = await Notification.updateMany(
-      { recipient: userId, isRead: { $ne: true } },
-      { $set: { isRead: true } }
+      { recipient: userId, read: { $ne: true } },  
+      { $set: { read: true } }  
     );
     return res.json({
       message: "All notifications marked as read",

@@ -20,7 +20,7 @@ function validateEnv() {
     process.exit(1);
   }
 
-  console.log('✅ Environment variables validated');
+  console.log('Environment variables validated');
 }
 
 module.exports = validateEnv;
