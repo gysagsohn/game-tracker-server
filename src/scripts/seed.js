@@ -93,7 +93,7 @@ async function seed() {
       firstName: "Admin Gy",
       lastName: "Sohn",
       email: adminEmail,
-      password: "Admin123!", // CHANGE THIS PASSWORD AFTER FIRST LOGIN
+      password: "Admin123!", 
       role: "admin",
       authProvider: "local",
       isEmailVerified: true

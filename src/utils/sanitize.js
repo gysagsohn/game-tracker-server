@@ -39,14 +39,29 @@ function sanitizeObject(obj, fields) {
 
 /**
  * Sanitize an array of objects
- * Useful for bulk operations like player arrays
+ * Preserves all fields, but sanitizes specified string fields
+ * 
+ * @param {Array} arr - Array of objects to sanitize
+ * @param {Array<string>} fieldsToSanitize - Field names to sanitize (strings only)
+ * @returns {Array} New array with sanitized fields
  */
-function sanitizeArray(arr, fieldsPerItem) {
+function sanitizeArray(arr, fieldsToSanitize = []) {
   if (!Array.isArray(arr)) return arr;
   
   return arr.map(item => {
     if (typeof item !== "object" || item === null) return item;
-    return sanitizeObject(item, fieldsPerItem);
+    
+    
+    const result = { ...item };
+    
+    
+    fieldsToSanitize.forEach(field => {
+      if (result[field] !== undefined && typeof result[field] === "string") {
+        result[field] = sanitizeString(result[field]);
+      }
+    });
+    
+    return result;
   });
 }
 
