@@ -13,6 +13,19 @@ module.exports = {
     // Friend request sending
     FRIEND_REQUEST_MAX: 5,
     FRIEND_REQUEST_WINDOW_MS: 60 * 60 * 1000, // 1 hour
+
+    // NEW: Session/Match operations
+    MATCH_CREATE_MAX: 10,
+    MATCH_CREATE_WINDOW_MS: 60 * 60 * 1000, // 1 hour (10 matches/hour)
+
+    //Search operations
+    SEARCH_MAX: 20,
+    SEARCH_WINDOW_MS: 60 * 1000, // 1 minute (20 searches/minute)
+    
+    //General API rate limit (fallback)
+    GENERAL_MAX: 100,
+    GENERAL_WINDOW_MS: 60 * 1000, // 1 minute (100 requests/minute)
+
   },
 
   // Email rate limiting
