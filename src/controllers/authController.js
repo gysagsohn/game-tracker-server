@@ -156,31 +156,60 @@ async function login(req, res, next) {
 }
 
 // Email verification
-async function verifyEmail(req, res, next) {
-  try {
-    const token = req.query.token;
-    if (!token) {
-      return res.status(400).json({ message: "Token missing" });
+  async function verifyEmail(req, res, next) {
+    try {
+      const token = req.query.token;
+      if (!token) {
+        return res.status(400).json({ message: "Token missing" });
+      }
+
+      // Verify token first before database lookup
+      let decoded;
+      try {
+        decoded = jwt.verify(token, process.env.JWT_SECRET);
+      } catch (err) {
+        return res.status(400).json({ message: "Invalid or expired token" });
+      }
+
+      const user = await User.findById(decoded.id).select("-password");
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Check if already verified
+      if (user.isEmailVerified) {
+        return res.status(200).json({ 
+          message: "Email already verified. You can log in now." 
+        });
+      }
+
+      // Use atomic update to prevent race condition
+      const result = await User.findOneAndUpdate(
+        { 
+          _id: decoded.id, 
+          isEmailVerified: false // Only update if not already verified
+        },
+        { 
+          $set: { isEmailVerified: true }
+        },
+        { new: true }
+      ).select("-password");
+
+      // Check if update actually happened
+      if (!result) {
+        // Another request already verified this email
+        return res.status(200).json({ 
+          message: "Email already verified. You can log in now." 
+        });
+      }
+
+      res.status(200).json({ 
+        message: "Email verified successfully. You can now log in." 
+      });
+    } catch (err) {
+      return res.status(400).json({ message: "Invalid or expired token" });
     }
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id).select("-password");
-    
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    if (user.isEmailVerified) {
-      return res.status(200).json({ message: "Email already verified" });
-    }
-
-    user.isEmailVerified = true;
-    await user.save();
-
-    res.status(200).json({ message: "Email verified successfully" });
-  } catch (err) {
-    return res.status(400).json({ message: "Invalid or expired token" });
-  }
 }
 
 // Resend email verification
@@ -259,67 +288,84 @@ async function forgotPassword(req, res, next) {
 }
 
 // Reset password
-async function resetPassword(req, res, next) {
-  try {
-    const { token, password } = req.body;
-    
-    if (!token || !password) {
-      return res.status(400).json({ message: "Missing token or password." });
-    }
-
-    // Verify JWT token structure
-    let payload;
+  async function resetPassword(req, res, next) {
     try {
-      payload = jwt.verify(token, process.env.JWT_SECRET);
-    } catch {
-      return res.status(400).json({ message: "Invalid or expired token." });
-    }
+      const { token, password } = req.body;
+      
+      if (!token || !password) {
+        return res.status(400).json({ message: "Missing token or password." });
+      }
 
-    const user = await User.findById(payload.id);
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
-    }
+      // Verify JWT token structure
+      let payload;
+      try {
+        payload = jwt.verify(token, process.env.JWT_SECRET);
+      } catch {
+        return res.status(400).json({ message: "Invalid or expired token." });
+      }
 
-    // Check if this is a Google account
-    if (user.authProvider !== "local") {
-      return res.status(400).json({ 
-        message: "This account uses Google sign-in. Use Google to log in." 
+      const user = await User.findById(payload.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found." });
+      }
+
+      // Check if this is a Google account
+      if (user.authProvider !== "local") {
+        return res.status(400).json({ 
+          message: "This account uses Google sign-in. Use Google to log in." 
+        });
+      }
+
+      // Validate the token matches the one in database
+      if (!user.resetPasswordToken || user.resetPasswordToken !== token) {
+        return res.status(400).json({ 
+          message: "Invalid or already-used token. Please request a new password reset." 
+        });
+      }
+
+      //  Check if token has expired
+      if (!user.resetPasswordExpires || Date.now() > user.resetPasswordExpires) {
+        // Clear expired token
+        user.resetPasswordToken = undefined;
+        user.resetPasswordExpires = undefined;
+        await user.save();
+        
+        return res.status(400).json({ 
+          message: "Token has expired. Please request a new password reset." 
+        });
+      }
+
+      // Validate password strength
+      if (password.length < 8) {
+        return res.status(400).json({ 
+          message: "Password must be at least 8 characters long." 
+        });
+      }
+
+      // Update password
+      user.password = password; // pre-save hook will hash it
+      
+      // Invalidate the reset token immediately
+      user.resetPasswordToken = undefined;
+      user.resetPasswordExpires = undefined;
+      
+      await user.save();
+
+      // AUTO-LOGIN: Generate new login token
+      const freshToken = createToken(user);
+      const safeUser = await User.findById(user._id).select("-password");
+
+      return res.json({
+        message: "Password has been reset successfully.",
+        token: freshToken,
+        user: safeUser,
       });
+    } catch (err) {
+      next(err);
     }
-
-    // Validate the token matches the one in database
-    if (!user.resetPasswordToken || user.resetPasswordToken !== token) {
-      return res.status(400).json({ 
-        message: "Invalid or already-used token. Please request a new password reset." 
-      });
-    }
-
-    // Check if token has expired
-    if (!user.resetPasswordExpires || Date.now() > user.resetPasswordExpires) {
-      return res.status(400).json({ 
-        message: "Token has expired. Please request a new password reset." 
-      });
-    }
-
-    // Update password
-    user.password = password; // pre-save hook will hash it
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpires = undefined;
-    await user.save();
-
-    // Generate new login token
-    const freshToken = createToken(user);
-    const safeUser = await User.findById(user._id).select("-password");
-
-    return res.json({
-      message: "Password has been reset successfully.",
-      token: freshToken,
-      user: safeUser,
-    });
-  } catch (err) {
-    next(err);
   }
-}
+
+
 
 module.exports = {
   signup,
