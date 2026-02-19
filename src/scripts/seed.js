@@ -1,4 +1,4 @@
-// src/scripts/seed.js - SECURE VERSION
+
 
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");

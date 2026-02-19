@@ -194,6 +194,7 @@ async function searchUsers(req, res, next) {
     const { sanitizeString } = require("../utils/sanitize");
 
     const query = sanitizeString(req.query.q || "");
+    
     const currentUserId = req.user._id.toString();
     
     if (query.length < DATA.SEARCH_QUERY_MIN_LENGTH) {
