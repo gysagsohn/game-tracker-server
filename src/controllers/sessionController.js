@@ -128,14 +128,8 @@ async function getAllSessions(req, res, next) {
 
 // Helper
 async function sendGuestInviteEmail(email, name = "Player") {
-  const html = `
-    <h3>You've been invited to a game on Game Tracker!</h3>
-    <p>Hi ${name},</p>
-    <p>You were added to a match as a guest. To track your own stats and matches, create an account below:</p>
-    <a href="${FRONTEND_URL}/signup">Sign up and claim your games</a>
-  `;
   const wrapped = renderEmail({
-    title: "You’re invited to a game!",
+    title: "You're invited to a game!",
     preheader: "Create an account to claim your matches and stats",
     bodyHtml: `
       <p>Hi ${name},</p>
@@ -143,8 +137,9 @@ async function sendGuestInviteEmail(email, name = "Player") {
       <p><a class="button" href="${FRONTEND_URL}/signup">Sign up & claim your games</a></p>
     `
   });
-  const { ok } = await sendEmail(email, "Game Tracker Invite – Claim Your Games", wrapped);
-  return ok;
+  
+  const result = await sendEmail(email, "Game Tracker Invite – Claim Your Games", wrapped);
+  return result.ok;
 }
 
 // GET /sessions/:id

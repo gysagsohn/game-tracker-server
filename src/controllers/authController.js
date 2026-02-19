@@ -9,29 +9,29 @@ function createToken(user) {
 }
 
 // Helper: Send email verification link
+
 async function sendVerificationEmail(user) {
   const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
   const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
   
-  try {
-    await sendEmail({
-      to: user.email,
-      subject: "Verify Your Email - Game Tracker",
-      text: `Hi ${user.firstName},\n\nWelcome to Game Tracker! Please verify your email by clicking this link:\n${verificationLink}\n\nThis link expires in 1 hour.\n\nThe Game Tracker Team`,
-      html: `
-        <h2>Welcome to Game Tracker!</h2>
-        <p>Hi ${user.firstName},</p>
-        <p>Thanks for signing up! Click the button below to verify your email address:</p>
-        <p><a href="${verificationLink}" style="display: inline-block; padding: 12px 24px; background: #5865F2; color: white; text-decoration: none; border-radius: 8px;">Verify Email</a></p>
-        <p style="color: #666; font-size: 14px;">Or copy this link: ${verificationLink}</p>
-        <p style="color: #999; font-size: 12px;">This link will expire in 1 hour.</p>
-      `
-    });
-    return true;
-  } catch (error) {
-    console.error("Failed to send verification email:", error);
-    return false;
+  const result = await sendEmail(
+    user.email,
+    "Verify Your Email - Game Tracker",
+    `
+      <h2>Welcome to Game Tracker!</h2>
+      <p>Hi ${user.firstName},</p>
+      <p>Thanks for signing up! Click the button below to verify your email address:</p>
+      <p><a href="${verificationLink}" style="display: inline-block; padding: 12px 24px; background: #5865F2; color: white; text-decoration: none; border-radius: 8px;">Verify Email</a></p>
+      <p style="color: #666; font-size: 14px;">Or copy this link: ${verificationLink}</p>
+      <p style="color: #999; font-size: 12px;">This link will expire in 1 hour.</p>
+    `
+  );
+  
+  if (!result.ok) {
+    console.error("Failed to send verification email:", result.error);
   }
+  
+  return result.ok;
 }
 
 // Signup
@@ -78,13 +78,12 @@ async function signup(req, res, next) {
 
       console.log(`Synced ${sessionsWithGuest.length} guest match(es) to ${newUser.email}`);
 
-      // Send guest match notification email
+      // Send guest match notification email with new format
       try {
-        await sendEmail({
-          to: newUser.email,
-          subject: 'Your Guest Matches Have Been Linked!',
-          text: `Hi ${newUser.firstName},\n\nGood news! We found ${sessionsWithGuest.length} match(es) where you were invited as a guest. These have now been linked to your new Game Tracker account.\n\nYou can view them on your dashboard once you verify your email.\n\nHappy gaming!\n\nThe Game Tracker Team`,
-          html: `
+        const result = await sendEmail(
+          newUser.email,
+          'Your Guest Matches Have Been Linked!',
+          `
             <h2>Welcome to Game Tracker, ${newUser.firstName}!</h2>
             <p>Good news! We found <strong>${sessionsWithGuest.length} match(es)</strong> where you were invited as a guest.</p>
             <p>These have now been linked to your new account.</p>
@@ -92,7 +91,93 @@ async function signup(req, res, next) {
             <p style="color: #666; font-size: 14px;">Happy gaming!</p>
             <p style="color: #999; font-size: 12px;">The Game Tracker Team</p>
           `
+        );
+        
+        if (!result.ok) {
+          console.error("Failed to send guest match notification:", result.error);
+        }
+      } catch (error) {
+        console.error("Failed to send guest match notification:", error);
+        // Don't fail signup if notification email fails
+      }
+    }
+
+    // Send verification email
+    const emailSent = await sendVerificationEmail(newUser);
+
+    // Return user without password
+    const safeUser = await User.findById(newUser._id).select("-password");
+    
+    return res.status(201).json({
+      message: "Account created. Please verify your email to continue.",
+      user: safeUser,
+      emailSent,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+async function signup(req, res, next) {
+  try {
+    const { firstName, lastName, email, password } = req.body;
+    if (!firstName || !lastName || !email || !password) {
+      return res.status(400).json({ message: "All fields are required." });
+    }
+
+    const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
+    if (existingUser) {
+      return res.status(409).json({ message: "Email already in use." });
+    }
+
+    const newUser = new User({
+      firstName,
+      lastName,
+      email: email.toLowerCase().trim(),
+      password,
+      authProvider: "local",
+      isEmailVerified: false,
+      role: "user",
+    });
+
+    await newUser.save();
+
+    // Link guest matches to new account
+    const sessionsWithGuest = await Session.find({
+      'players.email': newUser.email,
+      'players.user': null
+    });
+
+    if (sessionsWithGuest.length > 0) {
+      for (const session of sessionsWithGuest) {
+        session.players.forEach((player) => {
+          if (player.email === newUser.email && !player.user) {
+            player.user = newUser._id;
+            player.confirmed = true;
+          }
         });
+        await session.save();
+      }
+
+      console.log(`Synced ${sessionsWithGuest.length} guest match(es) to ${newUser.email}`);
+
+      // ✅ FIXED: Send guest match notification email with new format
+      try {
+        const result = await sendEmail(
+          newUser.email,
+          'Your Guest Matches Have Been Linked!',
+          `
+            <h2>Welcome to Game Tracker, ${newUser.firstName}!</h2>
+            <p>Good news! We found <strong>${sessionsWithGuest.length} match(es)</strong> where you were invited as a guest.</p>
+            <p>These have now been linked to your new account.</p>
+            <p><a href="${process.env.FRONTEND_URL}/matches" style="display: inline-block; padding: 10px 20px; background: #5865F2; color: white; text-decoration: none; border-radius: 8px;">View Your Matches</a></p>
+            <p style="color: #666; font-size: 14px;">Happy gaming!</p>
+            <p style="color: #999; font-size: 12px;">The Game Tracker Team</p>
+          `
+        );
+        
+        if (!result.ok) {
+          console.error("Failed to send guest match notification:", result.error);
+        }
       } catch (error) {
         console.error("Failed to send guest match notification:", error);
         // Don't fail signup if notification email fails
@@ -239,18 +324,30 @@ async function resendVerificationEmail(req, res, next) {
 async function forgotPassword(req, res, next) {
   try {
     const { email } = req.body;
+    
+    // ALWAYS return success message (whether user exists or not)
     const user = await User.findOne({ email: email.toLowerCase().trim() });
     
+    // If user doesn't exist, pretend we sent email (security best practice)
     if (!user) {
-      return res.status(404).json({ message: "User not found." });
-    }
-
-    if (user.authProvider === "google" && !user.password) {
-      return res.status(400).json({ 
-        message: "This account uses Google sign-in. Please continue with Google to access your account." 
+      // Log for monitoring (optional)
+      console.log(`Password reset attempted for non-existent email: ${email}`);
+      
+      // Return generic success message (don't reveal user doesn't exist)
+      return res.json({ 
+        message: "If your email is registered, you'll receive a password reset link shortly." 
       });
     }
 
+    // Check if Google account
+    if (user.authProvider === "google" && !user.password) {
+      // Still don't reveal user exists, but give helpful hint
+      return res.json({ 
+        message: "If your email is registered, you'll receive a password reset link shortly. Note: Google sign-in accounts cannot reset passwords this way." 
+      });
+    }
+
+    // Generate and send reset token
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "15m" });
     user.resetPasswordToken = token;
     user.resetPasswordExpires = Date.now() + 15 * 60 * 1000;
@@ -274,13 +371,15 @@ async function forgotPassword(req, res, next) {
       });
     } catch (error) {
       console.error("Failed to send password reset email:", error);
-      return res.status(500).json({ message: "Failed to send reset email." });
+      // ✅ Still return success (don't reveal email sending failed)
+      return res.json({ 
+        message: "If your email is registered, you'll receive a password reset link shortly." 
+      });
     }
 
-    const safeUser = await User.findById(user._id).select("-password");
+    // ✅ Generic success message
     res.json({ 
-      message: "If your email exists, a reset link has been sent.", 
-      data: safeUser 
+      message: "If your email is registered, you'll receive a password reset link shortly." 
     });
   } catch (err) {
     next(err);

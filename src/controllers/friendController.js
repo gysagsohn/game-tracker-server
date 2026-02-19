@@ -60,8 +60,8 @@ async function sendFriendRequest(req, res, next) {
     });
     let emailSent = false;
     try {
-      const { ok } = await sendEmail(recipient.email, "New Friend Request – Game Tracker", html);
-      emailSent = ok;
+      const result = await sendEmail(recipient.email, "New Friend Request – Game Tracker", html);
+      emailSent = result.ok; 
     } catch (emailErr) {
       console.warn("Friend email failed:", emailErr.message);
     }
