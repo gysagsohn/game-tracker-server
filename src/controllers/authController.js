@@ -9,7 +9,6 @@ function createToken(user) {
 }
 
 // Helper: Send email verification link
-
 async function sendVerificationEmail(user) {
   const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
   const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
@@ -78,89 +77,7 @@ async function signup(req, res, next) {
 
       console.log(`Synced ${sessionsWithGuest.length} guest match(es) to ${newUser.email}`);
 
-      // Send guest match notification email with new format
-      try {
-        const result = await sendEmail(
-          newUser.email,
-          'Your Guest Matches Have Been Linked!',
-          `
-            <h2>Welcome to Game Tracker, ${newUser.firstName}!</h2>
-            <p>Good news! We found <strong>${sessionsWithGuest.length} match(es)</strong> where you were invited as a guest.</p>
-            <p>These have now been linked to your new account.</p>
-            <p><a href="${process.env.FRONTEND_URL}/matches" style="display: inline-block; padding: 10px 20px; background: #5865F2; color: white; text-decoration: none; border-radius: 8px;">View Your Matches</a></p>
-            <p style="color: #666; font-size: 14px;">Happy gaming!</p>
-            <p style="color: #999; font-size: 12px;">The Game Tracker Team</p>
-          `
-        );
-        
-        if (!result.ok) {
-          console.error("Failed to send guest match notification:", result.error);
-        }
-      } catch (error) {
-        console.error("Failed to send guest match notification:", error);
-        // Don't fail signup if notification email fails
-      }
-    }
-
-    // Send verification email
-    const emailSent = await sendVerificationEmail(newUser);
-
-    // Return user without password
-    const safeUser = await User.findById(newUser._id).select("-password");
-    
-    return res.status(201).json({
-      message: "Account created. Please verify your email to continue.",
-      user: safeUser,
-      emailSent,
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-async function signup(req, res, next) {
-  try {
-    const { firstName, lastName, email, password } = req.body;
-    if (!firstName || !lastName || !email || !password) {
-      return res.status(400).json({ message: "All fields are required." });
-    }
-
-    const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
-    if (existingUser) {
-      return res.status(409).json({ message: "Email already in use." });
-    }
-
-    const newUser = new User({
-      firstName,
-      lastName,
-      email: email.toLowerCase().trim(),
-      password,
-      authProvider: "local",
-      isEmailVerified: false,
-      role: "user",
-    });
-
-    await newUser.save();
-
-    // Link guest matches to new account
-    const sessionsWithGuest = await Session.find({
-      'players.email': newUser.email,
-      'players.user': null
-    });
-
-    if (sessionsWithGuest.length > 0) {
-      for (const session of sessionsWithGuest) {
-        session.players.forEach((player) => {
-          if (player.email === newUser.email && !player.user) {
-            player.user = newUser._id;
-            player.confirmed = true;
-          }
-        });
-        await session.save();
-      }
-
-      console.log(`Synced ${sessionsWithGuest.length} guest match(es) to ${newUser.email}`);
-
-      // ✅ FIXED: Send guest match notification email with new format
+      // Send guest match notification email
       try {
         const result = await sendEmail(
           newUser.email,
@@ -241,60 +158,60 @@ async function login(req, res, next) {
 }
 
 // Email verification
-  async function verifyEmail(req, res, next) {
+async function verifyEmail(req, res, next) {
+  try {
+    const token = req.query.token;
+    if (!token) {
+      return res.status(400).json({ message: "Token missing" });
+    }
+
+    // Verify token first before database lookup
+    let decoded;
     try {
-      const token = req.query.token;
-      if (!token) {
-        return res.status(400).json({ message: "Token missing" });
-      }
-
-      // Verify token first before database lookup
-      let decoded;
-      try {
-        decoded = jwt.verify(token, process.env.JWT_SECRET);
-      } catch (err) {
-        return res.status(400).json({ message: "Invalid or expired token" });
-      }
-
-      const user = await User.findById(decoded.id).select("-password");
-      
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      // Check if already verified
-      if (user.isEmailVerified) {
-        return res.status(200).json({ 
-          message: "Email already verified. You can log in now." 
-        });
-      }
-
-      // Use atomic update to prevent race condition
-      const result = await User.findOneAndUpdate(
-        { 
-          _id: decoded.id, 
-          isEmailVerified: false // Only update if not already verified
-        },
-        { 
-          $set: { isEmailVerified: true }
-        },
-        { new: true }
-      ).select("-password");
-
-      // Check if update actually happened
-      if (!result) {
-        // Another request already verified this email
-        return res.status(200).json({ 
-          message: "Email already verified. You can log in now." 
-        });
-      }
-
-      res.status(200).json({ 
-        message: "Email verified successfully. You can now log in." 
-      });
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
     } catch (err) {
       return res.status(400).json({ message: "Invalid or expired token" });
     }
+
+    const user = await User.findById(decoded.id).select("-password");
+    
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Check if already verified
+    if (user.isEmailVerified) {
+      return res.status(200).json({ 
+        message: "Email already verified. You can log in now." 
+      });
+    }
+
+    // Use atomic update to prevent race condition
+    const result = await User.findOneAndUpdate(
+      { 
+        _id: decoded.id, 
+        isEmailVerified: false // Only update if not already verified
+      },
+      { 
+        $set: { isEmailVerified: true }
+      },
+      { new: true }
+    ).select("-password");
+
+    // Check if update actually happened
+    if (!result) {
+      // Another request already verified this email
+      return res.status(200).json({ 
+        message: "Email already verified. You can log in now." 
+      });
+    }
+
+    res.status(200).json({ 
+      message: "Email verified successfully. You can now log in." 
+    });
+  } catch (err) {
+    return res.status(400).json({ message: "Invalid or expired token" });
+  }
 }
 
 // Resend email verification
@@ -325,29 +242,22 @@ async function forgotPassword(req, res, next) {
   try {
     const { email } = req.body;
     
-    // ALWAYS return success message (whether user exists or not)
     const user = await User.findOne({ email: email.toLowerCase().trim() });
     
-    // If user doesn't exist, pretend we sent email (security best practice)
+    // Don't reveal if user exists
     if (!user) {
-      // Log for monitoring (optional)
       console.log(`Password reset attempted for non-existent email: ${email}`);
-      
-      // Return generic success message (don't reveal user doesn't exist)
       return res.json({ 
         message: "If your email is registered, you'll receive a password reset link shortly." 
       });
     }
 
-    // Check if Google account
     if (user.authProvider === "google" && !user.password) {
-      // Still don't reveal user exists, but give helpful hint
       return res.json({ 
         message: "If your email is registered, you'll receive a password reset link shortly. Note: Google sign-in accounts cannot reset passwords this way." 
       });
     }
 
-    // Generate and send reset token
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "15m" });
     user.resetPasswordToken = token;
     user.resetPasswordExpires = Date.now() + 15 * 60 * 1000;
@@ -355,29 +265,25 @@ async function forgotPassword(req, res, next) {
 
     const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
     
-    try {
-      await sendEmail({
-        to: user.email,
-        subject: "Reset Your Password - Game Tracker",
-        text: `Hi ${user.firstName},\n\nWe received a request to reset your password. Click this link to reset it:\n${resetLink}\n\nThis link expires in 15 minutes. If you didn't request this, you can ignore this email.\n\nThe Game Tracker Team`,
-        html: `
-          <h2>Reset Your Password</h2>
-          <p>Hi ${user.firstName},</p>
-          <p>We received a request to reset your password.</p>
-          <p><a href="${resetLink}" style="display: inline-block; padding: 12px 24px; background: #5865F2; color: white; text-decoration: none; border-radius: 8px;">Reset Password</a></p>
-          <p style="color: #666; font-size: 14px;">Or copy this link: ${resetLink}</p>
-          <p style="color: #999; font-size: 12px;">This link expires in 15 minutes. If you didn't request this, you can ignore this email.</p>
-        `
-      });
-    } catch (error) {
-      console.error("Failed to send password reset email:", error);
-      // ✅ Still return success (don't reveal email sending failed)
-      return res.json({ 
-        message: "If your email is registered, you'll receive a password reset link shortly." 
-      });
+    // Use new sendEmail format (to, subject, html)
+    const result = await sendEmail(
+      user.email,
+      "Reset Your Password - Game Tracker",
+      `
+        <h2>Reset Your Password</h2>
+        <p>Hi ${user.firstName},</p>
+        <p>We received a request to reset your password.</p>
+        <p><a href="${resetLink}" style="display: inline-block; padding: 12px 24px; background: #5865F2; color: white; text-decoration: none; border-radius: 8px;">Reset Password</a></p>
+        <p style="color: #666; font-size: 14px;">Or copy this link: ${resetLink}</p>
+        <p style="color: #999; font-size: 12px;">This link expires in 15 minutes. If you didn't request this, you can ignore this email.</p>
+      `
+    );
+
+    if (!result.ok) {
+      console.error("Failed to send password reset email:", result.error);
     }
 
-    // ✅ Generic success message
+    // Always return generic success
     res.json({ 
       message: "If your email is registered, you'll receive a password reset link shortly." 
     });
@@ -387,84 +293,82 @@ async function forgotPassword(req, res, next) {
 }
 
 // Reset password
-  async function resetPassword(req, res, next) {
+async function resetPassword(req, res, next) {
+  try {
+    const { token, password } = req.body;
+    
+    if (!token || !password) {
+      return res.status(400).json({ message: "Missing token or password." });
+    }
+
+    // Verify JWT token structure
+    let payload;
     try {
-      const { token, password } = req.body;
-      
-      if (!token || !password) {
-        return res.status(400).json({ message: "Missing token or password." });
-      }
+      payload = jwt.verify(token, process.env.JWT_SECRET);
+    } catch {
+      return res.status(400).json({ message: "Invalid or expired token." });
+    }
 
-      // Verify JWT token structure
-      let payload;
-      try {
-        payload = jwt.verify(token, process.env.JWT_SECRET);
-      } catch {
-        return res.status(400).json({ message: "Invalid or expired token." });
-      }
+    const user = await User.findById(payload.id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
 
-      const user = await User.findById(payload.id);
-      if (!user) {
-        return res.status(404).json({ message: "User not found." });
-      }
+    // Check if this is a Google account
+    if (user.authProvider !== "local") {
+      return res.status(400).json({ 
+        message: "This account uses Google sign-in. Use Google to log in." 
+      });
+    }
 
-      // Check if this is a Google account
-      if (user.authProvider !== "local") {
-        return res.status(400).json({ 
-          message: "This account uses Google sign-in. Use Google to log in." 
-        });
-      }
+    // Validate the token matches the one in database
+    if (!user.resetPasswordToken || user.resetPasswordToken !== token) {
+      return res.status(400).json({ 
+        message: "Invalid or already-used token. Please request a new password reset." 
+      });
+    }
 
-      // Validate the token matches the one in database
-      if (!user.resetPasswordToken || user.resetPasswordToken !== token) {
-        return res.status(400).json({ 
-          message: "Invalid or already-used token. Please request a new password reset." 
-        });
-      }
-
-      //  Check if token has expired
-      if (!user.resetPasswordExpires || Date.now() > user.resetPasswordExpires) {
-        // Clear expired token
-        user.resetPasswordToken = undefined;
-        user.resetPasswordExpires = undefined;
-        await user.save();
-        
-        return res.status(400).json({ 
-          message: "Token has expired. Please request a new password reset." 
-        });
-      }
-
-      // Validate password strength
-      if (password.length < 8) {
-        return res.status(400).json({ 
-          message: "Password must be at least 8 characters long." 
-        });
-      }
-
-      // Update password
-      user.password = password; // pre-save hook will hash it
-      
-      // Invalidate the reset token immediately
+    // Check if token has expired
+    if (!user.resetPasswordExpires || Date.now() > user.resetPasswordExpires) {
+      // Clear expired token
       user.resetPasswordToken = undefined;
       user.resetPasswordExpires = undefined;
-      
       await user.save();
-
-      // AUTO-LOGIN: Generate new login token
-      const freshToken = createToken(user);
-      const safeUser = await User.findById(user._id).select("-password");
-
-      return res.json({
-        message: "Password has been reset successfully.",
-        token: freshToken,
-        user: safeUser,
+      
+      return res.status(400).json({ 
+        message: "Token has expired. Please request a new password reset." 
       });
-    } catch (err) {
-      next(err);
     }
+
+    // Validate password strength
+    if (password.length < 8) {
+      return res.status(400).json({ 
+        message: "Password must be at least 8 characters long." 
+      });
+    }
+
+    // Update password
+    user.password = password; // pre-save hook will hash it
+    
+    // Invalidate the reset token immediately
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    
+    await user.save();
+
+    // AUTO-LOGIN: Generate new login token
+    const freshToken = createToken(user);
+    const safeUser = await User.findById(user._id).select("-password");
+
+    return res.json({
+      message: "Password has been reset successfully.",
+      token: freshToken,
+      user: safeUser,
+    });
+  } catch (err) {
+    next(err);
   }
-
-
+}
 
 module.exports = {
   signup,
