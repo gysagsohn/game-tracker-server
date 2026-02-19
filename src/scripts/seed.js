@@ -1,3 +1,5 @@
+// src/scripts/seed.js - SECURE VERSION
+
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
 
@@ -81,68 +83,43 @@ async function seed() {
     }
   }
 
-  // Create admin user
-  console.log("\nCreating admin user...");
-  const adminEmail = "gysagsohn@hotmail.com";
-  const existingAdmin = await User.findOne({ email: adminEmail });
+  // ✅ SECURE: Get admin credentials from environment variables
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  const adminFirstName = process.env.ADMIN_FIRST_NAME || "Admin";
+  const adminLastName = process.env.ADMIN_LAST_NAME || "User";
 
-  if (existingAdmin) {
-    console.log(`  [EXISTS]  Admin user: ${adminEmail}`);
+  // Validate required environment variables
+  if (!adminEmail || !adminPassword) {
+    console.log("\n" + "⚠️ ".repeat(35));
+    console.log("WARNING: Admin credentials not provided in environment variables!");
+    console.log("Skipping admin user creation.");
+    console.log("\nTo create an admin user, add to your .env file:");
+    console.log("  ADMIN_EMAIL=your-email@example.com");
+    console.log("  ADMIN_PASSWORD=YourSecurePassword123!");
+    console.log("  ADMIN_FIRST_NAME=Your");
+    console.log("  ADMIN_LAST_NAME=Name");
+    console.log("⚠️ ".repeat(35) + "\n");
   } else {
-    const admin = await User.create({
-      firstName: "Admin Gy",
-      lastName: "Sohn",
-      email: adminEmail,
-      password: "Admin123!", 
-      role: "admin",
-      authProvider: "local",
-      isEmailVerified: true
-    });
-    console.log(`  [CREATED] Admin user: ${adminEmail}`);
-    console.log(`  [INFO]    Default password: Admin123!`);
-    console.log(`  [WARNING] CHANGE THIS PASSWORD IMMEDIATELY AFTER FIRST LOGIN`);
-  }
+    // Create admin user
+    console.log("\nCreating admin user...");
+    const existingAdmin = await User.findOne({ email: adminEmail });
 
-  // Create test users for testing friend functionality
-  console.log("\nCreating test users...");
-  
-  const testUsers = [
-    {
-      firstName: "Alice",
-      lastName: "Smith",
-      email: "alice.smith@example.com",
-      password: "Test123!",
-      role: "user",
-      authProvider: "local",
-      isEmailVerified: true
-    },
-    {
-      firstName: "Bob",
-      lastName: "Johnson",
-      email: "bob.johnson@example.com",
-      password: "Test123!",
-      role: "user",
-      authProvider: "local",
-      isEmailVerified: true
-    },
-    {
-      firstName: "Charlie",
-      lastName: "Brown",
-      email: "charlie.brown@example.com",
-      password: "Test123!",
-      role: "user",
-      authProvider: "local",
-      isEmailVerified: true
-    }
-  ];
-
-  for (let userData of testUsers) {
-    const exists = await User.findOne({ email: userData.email });
-    if (!exists) {
-      await User.create(userData);
-      console.log(`  [CREATED] ${userData.email}`);
+    if (existingAdmin) {
+      console.log(`  [EXISTS]  Admin user: ${adminEmail}`);
     } else {
-      console.log(`  [EXISTS]  ${userData.email}`);
+      const admin = await User.create({
+        firstName: adminFirstName,
+        lastName: adminLastName,
+        email: adminEmail,
+        password: adminPassword,
+        role: "admin",
+        authProvider: "local",
+        isEmailVerified: true
+      });
+      console.log(`  [CREATED] Admin user: ${adminEmail}`);
+      console.log(`  [INFO]    Password set from environment variable`);
+      console.log(`  [WARNING] Store these credentials securely!`);
     }
   }
 
@@ -151,17 +128,16 @@ async function seed() {
   console.log("\n" + "=".repeat(70));
   console.log("SEEDING COMPLETE");
   console.log("=".repeat(70));
-  console.log("\nACCOUNTS CREATED:\n");
-  console.log("ADMIN ACCOUNT:");
-  console.log("  Email:    gysagsohn@hotmail.com");
-  console.log("  Password: Admin123!");
-  console.log("  WARNING:  CHANGE THIS PASSWORD IMMEDIATELY!\n");
-  console.log("TEST USERS (all passwords: Test123!):");
-  console.log("  alice.smith@example.com");
-  console.log("  bob.johnson@example.com");
-  console.log("  charlie.brown@example.com\n");
-  console.log("GAMES SEEDED: 8 games\n");
-  console.log("=".repeat(70));
+  console.log("\nGAMES SEEDED: 8 games");
+  
+  if (adminEmail) {
+    console.log("\nADMIN ACCOUNT:");
+    console.log(`  Email: ${adminEmail}`);
+    console.log("  Password: (set via environment variable)");
+  }
+  
+  
+  console.log("\n" + "=".repeat(70));
   console.log("\nYou can now run: npm run dev");
   console.log("Then start testing at: http://localhost:5173\n");
 }
