@@ -191,7 +191,9 @@ async function getUserStats(req, res, next) {
 // GET /users/search?q=john
 async function searchUsers(req, res, next) {
   try {
-    const query = req.query.q || "";
+    const { sanitizeString } = require("../utils/sanitize");
+
+    const query = sanitizeString(req.query.q || "");
     const currentUserId = req.user._id.toString();
     
     if (query.length < DATA.SEARCH_QUERY_MIN_LENGTH) {

@@ -5,11 +5,17 @@ const sendEmail = require("../utils/sendEmail");
 const logUserActivity = require("../utils/logActivity");
 const { FRONTEND_URL } = require("../utils/urls");
 const renderEmail = require("../utils/renderEmail");
+const { sanitizeString } = require("../utils/sanitize");
 
 // Send a friend request
 async function sendFriendRequest(req, res, next) {
   try {
-    const { email } = req.body;
+    const email = sanitizeString(req.body.email?.trim() || "");
+    
+    if (!email) {
+      return res.status(400).json({ message: "Email is required." });
+    }
+    
     const currentUserId = req.user.id;
 
     const sender = await User.findById(currentUserId);
@@ -44,7 +50,7 @@ async function sendFriendRequest(req, res, next) {
 
     // Try sending email
     const html = renderEmail({
-      title: "You’ve got a friend request",
+      title: "You've got a friend request",
       preheader: `${sender.firstName} sent you a friend request`,
       bodyHtml: `
         <p>Hi ${recipient.firstName || ""},</p>
@@ -65,6 +71,7 @@ async function sendFriendRequest(req, res, next) {
     next(err);
   }
 }
+
 
 // Accept or reject a friend request
 async function respondToFriendRequest(req, res, next) {
