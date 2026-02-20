@@ -13,13 +13,21 @@
 
 # Game Tracker Backend – Express + MongoDB API
 
-Production-ready backend API for [Game Tracker](https://github.com/gysagsohn/game-tracker-client), a full-stack MERN application for tracking card and board game results with friends.
+Production-ready backend API for [Game Tracker](https://github.com/gysagsohn/game-tracker-client), a full-stack MERN application for tracking board and card game results with friends.
 
 **Frontend Repository:** [game-tracker-client](https://github.com/gysagsohn/game-tracker-client)
 
 ## Live Deployment
 - **Backend API**: [https://game-tracker-server-zq2k.onrender.com](https://game-tracker-server-zq2k.onrender.com)
 - **Frontend App**: [https://gy-gametracker.netlify.app](https://gy-gametracker.netlify.app)
+
+---
+
+## Why I Built This
+
+I was using Google Keep to track board game wins and losses with my friends—copying and pasting names, manually updating scores, and scrolling through endless notes to find past results. It was messy and inefficient.
+
+I wanted a proper solution: a full-stack web app where we could log matches, confirm results, view statistics, and keep everything organized. Game Tracker was born from this need, and it became a portfolio project showcasing production-ready development practices.
 
 ---
 
@@ -38,10 +46,10 @@ Production-ready backend API for [Game Tracker](https://github.com/gysagsohn/gam
 ### Authentication & Security
 - JWT-based authentication with email verification
 - Google OAuth integration via Passport.js
-- **Enterprise-grade security** (10/10 security score)
+- Enterprise-grade security 
 - OAuth redirect validation (phishing prevention)
 - Single-use password reset tokens with auto-login
-- Comprehensive rate limiting (5 different limiters)
+- Comprehensive rate limiting on all sensitive endpoints
 - Input sanitization (XSS/NoSQL injection prevention)
 - Atomic database operations (race condition prevention)
 - Role-based access control (user/admin)
@@ -85,146 +93,21 @@ Production-ready backend API for [Game Tracker](https://github.com/gysagsohn/gam
 
 ---
 
-## Security Architecture (Production-Ready)
+## Security Architecture
 
-### Comprehensive Security Sprint (February 2026)
-Game Tracker underwent a complete security audit and implementation of enterprise-grade security features:
+Game Tracker implements enterprise-grade security with a **10/10 security score**, protecting against:
+- Brute force attacks (rate limiting)
+- OAuth phishing (redirect validation)
+- XSS attacks (input sanitization)
+- NoSQL injection (query sanitization)
+- Token reuse (single-use reset tokens)
+- Race conditions (atomic database operations)
+- Email bombing (rate-limited reminders)
+- Data scraping (search rate limiting)
 
-#### **Fix #1: OAuth Redirect Validation**
-- Validates redirect URIs against allowlist
-- Prevents open redirect phishing attacks
-- Blocks token theft via malicious redirects
-- Only allows configured frontend URLs
+**Defense-in-Depth:** 6 layers of protection (Input Validation → Sanitization → Authentication → Authorization → Rate Limiting → Database)
 
-**Implementation:**
-```javascript
-function isValidRedirectUri(uri) {
-  const allowedOrigins = [FRONTEND_URL, 'http://localhost:5173'];
-  return allowedOrigins.some(allowed => new URL(uri).origin === new URL(allowed).origin);
-}
-```
-
-#### **Fix #2: Password Reset Token Security**
-- Single-use tokens with immediate invalidation
-- 15-minute expiration window
-- Token stored in database for validation
-- Auto-login after successful reset
-- Prevents token reuse attacks
-
-**Security Flow:**
-1. User requests password reset → Token generated and stored in DB
-2. Token expires in 15 minutes
-3. User resets password → Token validated against DB
-4. Password updated → Token immediately invalidated
-5. Fresh JWT issued → User auto-logged in
-
-#### **Fix #3: Email Verification Race Condition**
-- Atomic database operations (`findOneAndUpdate`)
-- Prevents duplicate verification attempts
-- Handles concurrent requests gracefully
-- Idempotent verification endpoint
-
-**Implementation:**
-```javascript
-// Atomic update - only sets verified if not already verified
-await User.findOneAndUpdate(
-  { _id: userId, isEmailVerified: false },
-  { $set: { isEmailVerified: true } },
-  { new: true }
-);
-```
-
-#### **Fix #4: Comprehensive Rate Limiting**
-All sensitive endpoints protected with configurable rate limits:
-
-| Endpoint Type | Limit | Window | Protection |
-|---------------|-------|--------|------------|
-| **Auth** (login, signup, reset) | 5 requests | 10 minutes | Brute force attacks |
-| **Friend requests** | 5 requests | 1 hour | Spam prevention |
-| **Match creation** | 10 requests | 1 hour | Abuse prevention |
-| **Search queries** | 20 requests | 1 minute | Data scraping |
-| **Match reminders** | 3 requests | 1 hour | Email bombing |
-| **General API** | 100 requests | 1 minute | DDoS protection |
-
-**Configuration:**
-Rate limits configurable via environment variables:
-```bash
-AUTH_RATE_MAX=5
-AUTH_RATE_WINDOW_MS=600000
-FRIEND_RATE_MAX=5
-MATCH_CREATE_MAX=10
-SEARCH_MAX=20
-```
-
-#### **Fix #5: Input Sanitization Audit**
-- All user inputs sanitized to prevent XSS
-- Search queries sanitized (NoSQL injection prevention)
-- Friend request emails sanitized
-- Session notes and player data sanitized
-- Triple-layer validation: Joi → Sanitization → Mongoose
-
-**Sanitization Functions:**
-```javascript
-sanitizeString(str)   // Removes HTML/script tags
-sanitizeObject(obj, allowedFields)  // Whitelists fields
-sanitizeArray(arr, fieldsToSanitize)  // Sanitizes array elements
-```
-
-**Applied to:**
-- User search queries
-- Friend request emails
-- Match notes and player names
-- User profile updates
-- Game descriptions
-
-### Defense-in-Depth Approach
-
-**Layer 1: Input Validation**
-- Joi schema validation
-- Field whitelisting
-- Type checking
-
-**Layer 2: Sanitization**
-- HTML entity encoding
-- Script tag removal
-- NoSQL operator stripping
-
-**Layer 3: Authentication**
-- JWT with expiration
-- bcrypt password hashing
-- Email verification
-
-**Layer 4: Authorization**
-- Role-based access control
-- Resource ownership checks
-- Privacy guards
-
-**Layer 5: Rate Limiting**
-- Endpoint-specific limits
-- IP-based tracking
-- Configurable thresholds
-
-**Layer 6: Database**
-- Mongoose schema validation
-- Atomic operations
-- Query optimization
-
-### Attack Vectors Blocked
-
-| Attack Type | Protection Mechanism | Status |
-|-------------|---------------------|--------|
-| **Brute Force Password** | Rate limiting (5/10min) | BLOCKED |
-| **Token Reuse** | Single-use reset tokens | BLOCKED |
-| **OAuth Phishing** | Redirect URI validation | BLOCKED |
-| **XSS Attacks** | Input sanitization | BLOCKED |
-| **NoSQL Injection** | Query sanitization | BLOCKED |
-| **Email Bombing** | Rate limiting on email ops | BLOCKED |
-| **Account Enumeration** | Generic error messages | BLOCKED |
-| **Race Conditions** | Atomic DB operations | BLOCKED |
-| **Data Scraping** | Search rate limiting | BLOCKED |
-| **Spam Match Creation** | Creation rate limiting | BLOCKED |
-| **Mass Friend Requests** | Friend request rate limiting | BLOCKED |
-| **Password Reset Abuse** | Token validation + expiry | BLOCKED |
+**See detailed security documentation in [Version 2.0 section](#version-20---security-sprint-february-2026-)** ⬇️
 
 ---
 
@@ -232,58 +115,19 @@ sanitizeArray(arr, fieldsToSanitize)  // Sanitizes array elements
 ```bash
 game-tracker-server/
 ├── src/
-│   ├── config/
-│   │   ├── database.js           # MongoDB connection
-│   │   ├── passport.js           # OAuth strategies
-│   │   └── validateEnv.js        # Environment validation
-│   ├── controllers/
-│   │   ├── authController.js     # Authentication logic
-│   │   ├── oauthController.js    # OAuth logic
-│   │   ├── userController.js     # User CRUD + stats
-│   │   ├── sessionController.js  # Match management
-│   │   ├── gameController.js     # Game library
-│   │   ├── friendController.js   # Friend system
-│   │   └── adminController.js    # Admin operations
-│   ├── middleware/
-│   │   ├── authMiddleware.js     # JWT verification
-│   │   ├── adminCheck.js         # Role verification
-│   │   ├── privacyGuard.js       # Resource ownership
-│   │   ├── matchPrivacyGuard.js  # Match access control
-│   │   ├── rateLimiter.js        # Rate limiting (all limiters)
-│   │   └── validateRequest.js    # Joi validation
-│   ├── models/
-│   │   ├── UserModel.js
-│   │   ├── SessionModel.js
-│   │   ├── GameModel.js
-│   │   └── NotificationModel.js
-│   ├── routes/
-│   │   ├── authRouter.js
-│   │   ├── userRouter.js
-│   │   ├── sessionRouter.js
-│   │   ├── gameRouter.js
-│   │   ├── friendRouter.js
-│   │   └── adminRouter.js
-│   ├── utils/
-│   │   ├── sanitize.js           # XSS prevention
-│   │   ├── sendEmail.js          # Email service
-│   │   ├── logActivity.js        # Activity logging
-│   │   └── makeLimiter.js        # Rate limiter factory
-│   ├── constants/
-│   │   └── limits.js             # Rate limit configs
-│   ├── validation/
-│   │   ├── authSchemas.js        # Auth validation rules
-│   │   ├── sessionSchemas.js     # Match validation
-│   │   └── gameSchemas.js        # Game validation
-│   ├── scripts/
-│   │   ├── seed.js               # Database seeding
-│   │   ├── reset.js              # Database reset
-│   │   ├── createAdmin.js        # Admin account creation
-│   │   └── checkIndexes.js       # Index verification
-│   ├── index.js                  # Server entry point
-│   └── server.js                 # Express app config
-├── .env
-├── .env.example
-├── .gitignore
+│   ├── config/           # Database, OAuth, environment validation
+│   ├── controllers/      # Business logic (auth, users, sessions, games, friends, admin)
+│   ├── middleware/       # JWT, rate limiting, validation, privacy guards
+│   ├── models/           # Mongoose schemas (User, Session, Game, Notification)
+│   ├── routes/           # API route definitions
+│   ├── utils/            # Helpers (sanitization, email, activity logging)
+│   ├── constants/        # Rate limits and app constants
+│   ├── validation/       # Joi schemas
+│   ├── scripts/          # Seed, reset, admin creation
+│   ├── index.js          # Server entry point
+│   └── server.js         # Express app config
+├── .env                  # Environment variables (gitignored)
+├── .env.example          # Environment template
 ├── package.json
 └── README.md
 ```
@@ -294,7 +138,7 @@ game-tracker-server/
 
 ### Prerequisites
 - Node.js 18+ 
-- MongoDB database
+- MongoDB database (local or Atlas)
 - Resend API key (for email features)
 - Google OAuth credentials (optional)
 
@@ -332,18 +176,20 @@ GOOGLE_CLIENT_SECRET=your_google_client_secret
 # Email
 RESEND_API_KEY=your_resend_api_key
 
-# Seeding (REQUIRED for npm run seed)
+# Admin Account (Required for seeding)
 ADMIN_EMAIL=your-email@example.com
 ADMIN_PASSWORD=YourSecurePassword123!
 ADMIN_FIRST_NAME=Your
 ADMIN_LAST_NAME=Name
 ```
 
+**Security Note:** Never commit `.env` to version control! Copy `.env.example` instead.
+
 4. **Seed the database**
 ```bash
 npm run seed
 ```
-This creates 8 standard games and your admin account.
+Creates 8 standard games (Monopoly Deal, Catan, Phase 10, Skip-Bo, Uno, Codenames, Ticket to Ride, Exploding Kittens) and your admin account.
 
 5. **Start development server**
 ```bash
@@ -351,116 +197,6 @@ npm run dev
 ```
 
 Server will start at `http://localhost:3001`
-
----
-
-##  Database Seeding
-
-The seed script populates your database with initial games and creates an admin account.
-
-### Required Environment Variables
-
-Add these to your `.env` file **BEFORE** seeding:
-```bash
-# Admin Account (REQUIRED for seeding)
-ADMIN_EMAIL=your-email@example.com
-ADMIN_PASSWORD=YourSecurePassword123!
-ADMIN_FIRST_NAME=Your
-ADMIN_LAST_NAME=Name
-```
-
-**SECURITY NOTE**: Never commit these credentials to Git! These values are gitignored in `.env`.
-
-### Running the Seed Script
-```bash
-npm run seed
-```
-
-### What Gets Seeded
-
-**8 Standard Games:**
-- Monopoly Deal (Card, 2-5 players)
-- Catan (Board, 3-4 players)
-- Phase 10 (Card, 2-6 players)
-- Skip-Bo (Card, 2-6 players)
-- Uno (Card, 2-10 players)
-- Codenames (Word, 4-8 players)
-- Ticket to Ride (Board, 2-5 players)
-- Exploding Kittens (Card, 2-5 players)
-
-**Admin Account:** Created from environment variables
-
-### Security Best Practices
-
-1. Use different passwords for development and production
-2. Store production credentials in your hosting platform's secrets manager (Render Environment Variables)
-3. Never commit `.env` files to version control
-4. Change default passwords immediately after first deployment
-5. Use strong passwords (12+ characters, mixed case, numbers, symbols)
-
-### Deployment Setup
-
-**For Render (Production):**
-1. Go to your Render dashboard
-2. Navigate to your service → Environment
-3. Add these environment variables:
-   - `ADMIN_EMAIL`
-   - `ADMIN_PASSWORD`
-   - `ADMIN_FIRST_NAME`
-   - `ADMIN_LAST_NAME`
-4. Deploy your service
-5. Run seed script via Render shell or deployment hook
-
-**Example `.env.example`:**
-```bash
-# Copy this file to .env and fill in your values
-# Never commit .env to version control!
-
-DATABASE_URL=mongodb+srv://username:password@cluster.mongodb.net/database
-JWT_SECRET=your-random-secret-at-least-32-characters
-RESEND_API_KEY=re_your_resend_api_key
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD=SecurePassword123!
-ADMIN_FIRST_NAME=Admin
-ADMIN_LAST_NAME=User
-```
-
----
-
-## Data Models
-
-### User
-- Personal info (name, email, profile icon)
-- Authentication data (password hash, OAuth IDs)
-- Email verification status
-- Password reset tokens (with expiry)
-- Friend connections and requests
-- Game statistics (wins/losses/most played)
-- Favorite games bookmarks
-- Activity logs (last 100 actions)
-- Account status (verified, suspended, role)
-
-### Session (Match)
-- Game reference
-- Players array (registered + guests)
-- Individual scores and results
-- Confirmation status per player
-- Match notes and date
-- Creator and last editor tracking
-- Reminder timestamps (rate limited)
-
-### Game
-- Name, description, category
-- Player count (min/max)
-- Custom games flag
-- Creator reference
-
-### Notification
-- Recipient and sender references
-- Notification type (friend request, match invite, etc.)
-- Message content
-- Read status and timestamps
-- Optional session reference
 
 ---
 
@@ -483,7 +219,7 @@ ADMIN_LAST_NAME=User
 |--------|----------|-----------|-------------|
 | GET | `/me` | - | Get logged-in user |
 | GET | `/:id` | - | Get user by ID |
-| PUT | `/:id` | - | Update user (firstName, lastName, profileIcon only) |
+| PUT | `/:id` | - | Update user |
 | DELETE | `/:id` | - | Delete account |
 | GET | `/:id/stats` | - | Get user statistics |
 | GET | `/search?q=query` | 20/min | Search users |
@@ -524,12 +260,9 @@ ADMIN_LAST_NAME=User
 | PUT | `/notifications/:id/read` | - | Mark as read |
 | POST | `/notifications/read-all` | - | Mark all as read |
 
-### Admin (`/api/admin`)
-All routes require admin role. See full list in code documentation.
-
 ---
 
-## 📝 Scripts
+## Scripts
 ```bash
 npm run dev          # Start development server with nodemon
 npm start            # Start production server
@@ -543,7 +276,6 @@ npm run create-admin # Create admin account interactively
 ## Deployment
 
 ### Environment Variables (Production)
-Ensure all required variables are set in Render:
 
 **Required:**
 - `DATABASE_URL` - MongoDB connection string
@@ -551,42 +283,26 @@ Ensure all required variables are set in Render:
 - `RESEND_API_KEY` - Resend API key
 - `FRONTEND_URL` - Your Netlify URL
 - `SERVER_URL` - Your Render URL
-- `NODE_ENV` - Set to `production`
+- `NODE_ENV` - `production`
 
 **For Seeding:**
-- `ADMIN_EMAIL`
-- `ADMIN_PASSWORD`
-- `ADMIN_FIRST_NAME`
-- `ADMIN_LAST_NAME`
+- `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FIRST_NAME`, `ADMIN_LAST_NAME`
 
-**Optional (OAuth):**
-- `GOOGLE_CLIENT_ID`
-- `GOOGLE_CLIENT_SECRET`
-
-**Optional (Rate Limit Overrides):**
-- `AUTH_RATE_MAX` (default: 5)
-- `AUTH_RATE_WINDOW_MS` (default: 600000)
-- `FRIEND_RATE_MAX` (default: 5)
-- `MATCH_CREATE_MAX` (default: 10)
-- `SEARCH_MAX` (default: 20)
+**Optional:**
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (OAuth)
+- Rate limit overrides: `AUTH_RATE_MAX`, `FRIEND_RATE_MAX`, etc.
 
 ### Deployment Checklist
-- [x] Environment variables configured on Render
-- [x] MongoDB Atlas or production database ready
-- [x] Database seeded with default games
-- [x] Admin account created
-- [x] CORS configured for production frontend URL
-- [x] Email credentials tested
-- [x] OAuth callbacks updated to production URLs
-- [x] Rate limiting tested
-- [x] Security headers configured
+- Environment variables configured on Render
+- MongoDB Atlas ready
+- Database seeded
+- CORS configured for frontend URL
+- OAuth callbacks updated to production URLs
+- Rate limiting tested
 
 ---
 
 ## Testing
-
-### Manual Testing
-Use Bruno, Postman, or curl to test endpoints:
 ```bash
 # Test rate limiting
 for i in {1..6}; do
@@ -597,14 +313,7 @@ for i in {1..6}; do
 done
 # Attempt 6 should return 429 (rate limited)
 
-# Test authentication
-curl -X GET http://localhost:3001/api/users/me \
-  -H "Authorization: Bearer YOUR_TOKEN"
-```
-
-### Database Health Checks
-```bash
-# Verify indexes are properly created
+# Verify database indexes
 node src/scripts/checkIndexes.js
 ```
 
@@ -613,37 +322,32 @@ node src/scripts/checkIndexes.js
 ## Author
 
 **Gy Sohn**  
-Full-stack Developer  
+Full-Stack Developer  
 [LinkedIn](https://www.linkedin.com/in/gysohn) | [GitHub](https://github.com/gysagsohn) | [Portfolio](https://gysohn.com)
 
 Built as a portfolio project demonstrating:
-- Enterprise-grade security practices (10/10 security score)
+- Enterprise-grade security (10/10 security score)
 - Scalable API architecture
-- Modern authentication patterns (JWT + OAuth)
-- Database optimization techniques
-- Clean code organization
-- Production deployment experience
+- Modern authentication (JWT + OAuth)
+- Database optimization
+- Production deployment
 
 ---
 
 ## License
 
-This project is open source and available for educational purposes.
+Open source and available for educational purposes.
 
 ---
 
 ## Contributing
 
-This is a portfolio project, but feedback and suggestions are welcome! Feel free to:
-- Open an issue for bugs or suggestions
-- Submit pull requests for improvements
-- Star the repo if you find it useful
+Feedback and suggestions welcome! Open an issue or submit a PR.
 
 ---
 
 ## Contact
 
-For questions, collaboration, or feedback:
 - LinkedIn: [linkedin.com/in/gysohn](https://www.linkedin.com/in/gysohn)
 - Email: gysagsohn@hotmail.com
 
@@ -653,53 +357,135 @@ For questions, collaboration, or feedback:
 
 ### Version 2.0 - Security Sprint (February 2026) 🔒
 
-**Complete security overhaul with enterprise-grade protections:**
+**Complete security overhaul achieving 10/10 security score.**
 
-#### Security Fixes (5/5 Complete)
-- **OAuth Redirect Validation** - Prevents phishing attacks via malicious redirects
-- **Password Reset Token Security** - Single-use tokens with 15min expiry + auto-login
-- **Email Verification Race Condition** - Atomic database operations prevent duplicates
-- **Comprehensive Rate Limiting** - 5 different limiters protect all sensitive endpoints
-- **Input Sanitization Audit** - XSS/NoSQL injection prevention on all inputs
+#### 🔒 Security Fixes (5/5 Complete)
 
-#### Security Enhancements
-- Removed hardcoded admin credentials from seed script (now via env vars)
-- Environment variable validation on server startup
-- Triple-layer input validation (Joi + Sanitization + Mongoose)
-- Rate limit configuration via environment variables
-- Centralized security utilities (`sanitize.js`, `makeLimiter.js`)
-- JSON responses for rate limit errors (consistent API format)
+**Fix #1: OAuth Redirect Validation**
+- Validates redirect URIs against allowlist
+- Prevents open redirect phishing attacks
+- Blocks token theft via malicious redirects
+```javascript
+function isValidRedirectUri(uri) {
+  const allowedOrigins = [FRONTEND_URL, 'http://localhost:5173'];
+  return allowedOrigins.some(allowed => 
+    new URL(uri).origin === new URL(allowed).origin
+  );
+}
+```
 
-#### Performance & Optimization
+**Fix #2: Password Reset Token Security**
+- Single-use tokens with immediate invalidation
+- 15-minute expiration window
+- Token stored in database for validation
+- Auto-login after successful reset
+- **Flow:** Request → Generate token → Validate → Invalidate → Auto-login
+
+**Fix #3: Email Verification Race Condition**
+- Atomic database operations (`findOneAndUpdate`)
+- Prevents duplicate verification attempts
+- Idempotent verification endpoint
+```javascript
+await User.findOneAndUpdate(
+  { _id: userId, isEmailVerified: false },
+  { $set: { isEmailVerified: true } },
+  { new: true }
+);
+```
+
+**Fix #4: Comprehensive Rate Limiting**
+
+All sensitive endpoints now protected:
+
+| Endpoint | Limit | Window | Protection |
+|----------|-------|--------|------------|
+| Auth (login/signup/reset) | 5 req | 10 min | Brute force |
+| Friend requests | 5 req | 1 hour | Spam |
+| Match creation | 10 req | 1 hour | Abuse |
+| Search queries | 20 req | 1 min | Scraping |
+| Match reminders | 3 req | 1 hour | Email bombing |
+| General API | 100 req | 1 min | DDoS |
+
+Configurable via environment variables:
+```bash
+AUTH_RATE_MAX=5
+AUTH_RATE_WINDOW_MS=600000
+FRIEND_RATE_MAX=5
+```
+
+**Fix #5: Input Sanitization Audit**
+- All user inputs sanitized to prevent XSS
+- Search queries sanitized (NoSQL injection prevention)
+- Triple-layer validation: Joi → Sanitization → Mongoose
+
+**Sanitization utilities:**
+```javascript
+sanitizeString(str)     // Removes HTML/script tags
+sanitizeObject(obj, allowedFields)  // Whitelists fields
+sanitizeArray(arr, fields)  // Sanitizes array elements
+```
+
+**Applied to:**
+- User search queries
+- Friend request emails
+- Match notes and player names
+- User profile updates
+- Game descriptions
+
+#### 🛡️ Defense-in-Depth Architecture
+
+**6 Layers of Protection:**
+1. **Input Validation** - Joi schema validation, field whitelisting
+2. **Sanitization** - HTML entity encoding, script removal
+3. **Authentication** - JWT with expiration, bcrypt hashing
+4. **Authorization** - Role-based access, resource ownership checks
+5. **Rate Limiting** - Endpoint-specific limits, IP tracking
+6. **Database** - Mongoose validation, atomic operations
+
+#### Attack Vectors Blocked
+
+| Attack Type | Protection | Status |
+|-------------|-----------|--------|
+| Brute Force Password | Rate limiting (5/10min) | BLOCKED |
+| Token Reuse | Single-use reset tokens | BLOCKED |
+| OAuth Phishing | Redirect URI validation | BLOCKED |
+| XSS Attacks | Input sanitization | BLOCKED |
+| NoSQL Injection | Query sanitization | BLOCKED |
+| Email Bombing | Rate limiting | BLOCKED |
+| Account Enumeration | Generic errors | BLOCKED |
+| Race Conditions | Atomic operations | BLOCKED |
+| Data Scraping | Search rate limiting | BLOCKED |
+| Spam Creation | Creation rate limiting | BLOCKED |
+
+#### Additional Security Enhancements
+- Removed hardcoded admin credentials from seed script
+- Environment variable validation on startup
+- Centralized security utilities
+- JSON responses for rate limit errors
+- Comprehensive error handling
+
+#### ⚡ Performance Optimizations
 - Strategic database indexes (10-100x query performance)
 - Activity log capping (100 entries per user)
 - Query optimization with compound indexes
-- Eliminated N+1 query problems with proper population
+- Eliminated N+1 query problems
 
-#### Code Quality
-- Removed duplicate Mongoose indexes
-- Fixed deprecated Mongoose options
-- Comprehensive error handling
-- Improved code documentation
-- Consistent file naming conventions
 
-**Security Score Progression:**
 ---
 
 ### Version 1.3 - Production Hardening (January 2026)
 - XSS prevention with HTML sanitization
 - Field whitelisting for privilege escalation protection
-- Comprehensive Joi validation on all critical routes
+- Comprehensive Joi validation
 - Database performance optimizations
-- Activity log capping to prevent unbounded growth
 
 ---
 
 ### Version 1.2 - Feature Expansion (December 2025)
-- Friend system with requests and notifications
+- Friend system with notifications
 - Guest player support with email invitations
 - Match confirmation workflow
-- Email reminders for unconfirmed matches
+- Email reminders
 
 ---
 
