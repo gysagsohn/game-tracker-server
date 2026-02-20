@@ -13,6 +13,9 @@ async function sendVerificationEmail(user) {
   const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
   const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
   
+  console.log(`📧 Sending verification email to: ${user.email}`); // ADD THIS
+  console.log(`🔗 Verification link: ${verificationLink}`); // ADD THIS (helpful for testing)
+  
   const result = await sendEmail(
     user.email,
     "Verify Your Email - Game Tracker",
@@ -27,12 +30,15 @@ async function sendVerificationEmail(user) {
   );
   
   if (!result.ok) {
-    console.error("Failed to send verification email:", result.error);
+    console.error("❌ Failed to send verification email:", result.error);
+  } else {
+    console.log(`✅ Verification email sent successfully to ${user.email}`);
   }
   
   return result.ok;
 }
 
+// Signup
 // Signup
 async function signup(req, res, next) {
   try {
@@ -57,6 +63,7 @@ async function signup(req, res, next) {
     });
 
     await newUser.save();
+    console.log(`✅ User created: ${newUser.email}`); // ADD THIS
 
     // Link guest matches to new account
     const sessionsWithGuest = await Session.find({
@@ -93,16 +100,19 @@ async function signup(req, res, next) {
         );
         
         if (!result.ok) {
-          console.error("Failed to send guest match notification:", result.error);
+          console.error("❌ Failed to send guest match notification:", result.error); // IMPROVE THIS
+        } else {
+          console.log(`✅ Guest match notification sent to ${newUser.email}`); // ADD THIS
         }
       } catch (error) {
-        console.error("Failed to send guest match notification:", error);
-        // Don't fail signup if notification email fails
+        console.error("❌ Failed to send guest match notification:", error); // IMPROVE THIS
       }
     }
 
-    // Send verification email
+    // Send verification email - THIS IS THE CRITICAL PART
+    console.log(`📧 Attempting to send verification email to ${newUser.email}...`); // ADD THIS
     const emailSent = await sendVerificationEmail(newUser);
+    console.log(`📧 Verification email result: ${emailSent ? 'SUCCESS ✅' : 'FAILED ❌'}`); // ADD THIS
 
     // Return user without password
     const safeUser = await User.findById(newUser._id).select("-password");
@@ -110,9 +120,10 @@ async function signup(req, res, next) {
     return res.status(201).json({
       message: "Account created. Please verify your email to continue.",
       user: safeUser,
-      emailSent,
+      emailSent, // Frontend should check this!
     });
   } catch (err) {
+    console.error("❌ Signup error:", err); // ADD THIS
     next(err);
   }
 }
