@@ -268,7 +268,6 @@ npm run dev          # Start development server with nodemon
 npm start            # Start production server
 npm run seed         # Seed database with games + admin account
 npm run reset        # Clear all database collections
-npm run create-admin # Create admin account interactively
 ```
 
 ---
@@ -355,11 +354,11 @@ Feedback and suggestions welcome! Open an issue or submit a PR.
 
 ## Recent Updates
 
-### Version 2.0 - Security Sprint (February 2026) 🔒
+### Version 2.0 - Security Sprint (February 2026) 
 
 **Complete security overhaul achieving 10/10 security score.**
 
-#### 🔒 Security Fixes (5/5 Complete)
+#### Security Fixes (5/5 Complete)
 
 **Fix #1: OAuth Redirect Validation**
 - Validates redirect URIs against allowlist
@@ -432,7 +431,7 @@ sanitizeArray(arr, fields)  // Sanitizes array elements
 - User profile updates
 - Game descriptions
 
-#### 🛡️ Defense-in-Depth Architecture
+#### Defense-in-Depth Architecture
 
 **6 Layers of Protection:**
 1. **Input Validation** - Joi schema validation, field whitelisting
