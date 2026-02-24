@@ -12,10 +12,10 @@ function createToken(user) {
 async function sendVerificationEmail(user) {
   const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
   const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
-  
-  console.log(`📧 Sending verification email to: ${user.email}`); // ADD THIS
-  console.log(`🔗 Verification link: ${verificationLink}`); // ADD THIS (helpful for testing)
-  
+
+  console.log(`📧 Sending verification email to: ${user.email}`);
+  console.log(`🔗 Verification link: ${verificationLink}`);
+
   const result = await sendEmail(
     user.email,
     "Verify Your Email - Game Tracker",
@@ -28,17 +28,16 @@ async function sendVerificationEmail(user) {
       <p style="color: #999; font-size: 12px;">This link will expire in 1 hour.</p>
     `
   );
-  
+
   if (!result.ok) {
     console.error("❌ Failed to send verification email:", result.error);
   } else {
     console.log(`✅ Verification email sent successfully to ${user.email}`);
   }
-  
+
   return result.ok;
 }
 
-// Signup
 // Signup
 async function signup(req, res, next) {
   try {
@@ -63,15 +62,17 @@ async function signup(req, res, next) {
     });
 
     await newUser.save();
-    console.log(`✅ User created: ${newUser.email}`); // ADD THIS
+    console.log(`✅ User created: ${newUser.email}`);
 
-    // Link guest matches to new account
+    // Link guest matches + auto-friend inviters
     const sessionsWithGuest = await Session.find({
       'players.email': newUser.email,
       'players.user': null
     });
 
     if (sessionsWithGuest.length > 0) {
+      const inviterIds = new Set();
+
       for (const session of sessionsWithGuest) {
         session.players.forEach((player) => {
           if (player.email === newUser.email && !player.user) {
@@ -79,12 +80,44 @@ async function signup(req, res, next) {
             player.confirmed = true;
           }
         });
+
+        if (session.createdBy) {
+          inviterIds.add(session.createdBy.toString());
+        }
+
         await session.save();
       }
 
       console.log(`Synced ${sessionsWithGuest.length} guest match(es) to ${newUser.email}`);
 
-      // Send guest match notification email
+      // Auto-friend each match creator
+      for (const inviterId of inviterIds) {
+        if (inviterId === newUser._id.toString()) continue;
+
+        try {
+          const inviter = await User.findById(inviterId);
+          if (!inviter) continue;
+
+          const alreadyFriends = newUser.friends?.some(f => f.toString() === inviterId);
+          if (!alreadyFriends) {
+            newUser.friends = newUser.friends || [];
+            newUser.friends.push(inviterId);
+
+            inviter.friends = inviter.friends || [];
+            if (!inviter.friends.some(f => f.toString() === newUser._id.toString())) {
+              inviter.friends.push(newUser._id);
+            }
+            await inviter.save();
+            console.log(`Auto-friended ${newUser.email} with inviter ${inviter.email}`);
+          }
+        } catch (friendErr) {
+          console.warn("Auto-friend failed for inviter", inviterId, friendErr.message);
+        }
+      }
+
+      await newUser.save();
+
+      // Notify new user their matches have been linked
       try {
         const result = await sendEmail(
           newUser.email,
@@ -94,36 +127,28 @@ async function signup(req, res, next) {
             <p>Good news! We found <strong>${sessionsWithGuest.length} match(es)</strong> where you were invited as a guest.</p>
             <p>These have now been linked to your new account.</p>
             <p><a href="${process.env.FRONTEND_URL}/matches" style="display: inline-block; padding: 10px 20px; background: #5865F2; color: white; text-decoration: none; border-radius: 8px;">View Your Matches</a></p>
-            <p style="color: #666; font-size: 14px;">Happy gaming!</p>
-            <p style="color: #999; font-size: 12px;">The Game Tracker Team</p>
           `
         );
-        
-        if (!result.ok) {
-          console.error("❌ Failed to send guest match notification:", result.error); // IMPROVE THIS
-        } else {
-          console.log(`✅ Guest match notification sent to ${newUser.email}`); // ADD THIS
-        }
+        if (!result.ok) console.error("Failed to send guest match notification:", result.error);
       } catch (error) {
-        console.error("❌ Failed to send guest match notification:", error); // IMPROVE THIS
+        console.error("Failed to send guest match notification:", error);
       }
     }
 
-    // Send verification email - THIS IS THE CRITICAL PART
-    console.log(`📧 Attempting to send verification email to ${newUser.email}...`); // ADD THIS
+    // Send verification email
+    console.log(`📧 Attempting to send verification email to ${newUser.email}...`);
     const emailSent = await sendVerificationEmail(newUser);
-    console.log(`📧 Verification email result: ${emailSent ? 'SUCCESS ✅' : 'FAILED ❌'}`); // ADD THIS
+    console.log(`📧 Verification email result: ${emailSent ? 'SUCCESS ✅' : 'FAILED ❌'}`);
 
-    // Return user without password
     const safeUser = await User.findById(newUser._id).select("-password");
-    
+
     return res.status(201).json({
       message: "Account created. Please verify your email to continue.",
       user: safeUser,
-      emailSent, // Frontend should check this!
+      emailSent,
     });
   } catch (err) {
-    console.error("❌ Signup error:", err); // ADD THIS
+    console.error("❌ Signup error:", err);
     next(err);
   }
 }
@@ -139,8 +164,8 @@ async function login(req, res, next) {
     }
 
     if (user.authProvider === "google" && !user.password) {
-      return res.status(400).json({ 
-        message: "This account uses Google sign-in. Please continue with Google." 
+      return res.status(400).json({
+        message: "This account uses Google sign-in. Please continue with Google."
       });
     }
 
@@ -150,18 +175,18 @@ async function login(req, res, next) {
     }
 
     if (!user.isEmailVerified) {
-      return res.status(403).json({ 
-        message: "Please verify your email before logging in." 
+      return res.status(403).json({
+        message: "Please verify your email before logging in."
       });
     }
-    
+
     if (user.isSuspended) {
       return res.status(403).json({ message: "Account is suspended." });
     }
 
     const token = createToken(user);
     const safeUser = await User.findById(user._id).select("-password");
-    
+
     res.json({ user: safeUser, token });
   } catch (err) {
     next(err);
@@ -176,7 +201,6 @@ async function verifyEmail(req, res, next) {
       return res.status(400).json({ message: "Token missing" });
     }
 
-    // Verify token first before database lookup
     let decoded;
     try {
       decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -185,40 +209,31 @@ async function verifyEmail(req, res, next) {
     }
 
     const user = await User.findById(decoded.id).select("-password");
-    
+
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Check if already verified
     if (user.isEmailVerified) {
-      return res.status(200).json({ 
-        message: "Email already verified. You can log in now." 
+      return res.status(200).json({
+        message: "Email already verified. You can log in now."
       });
     }
 
-    // Use atomic update to prevent race condition
     const result = await User.findOneAndUpdate(
-      { 
-        _id: decoded.id, 
-        isEmailVerified: false // Only update if not already verified
-      },
-      { 
-        $set: { isEmailVerified: true }
-      },
+      { _id: decoded.id, isEmailVerified: false },
+      { $set: { isEmailVerified: true } },
       { new: true }
     ).select("-password");
 
-    // Check if update actually happened
     if (!result) {
-      // Another request already verified this email
-      return res.status(200).json({ 
-        message: "Email already verified. You can log in now." 
+      return res.status(200).json({
+        message: "Email already verified. You can log in now."
       });
     }
 
-    res.status(200).json({ 
-      message: "Email verified successfully. You can now log in." 
+    res.status(200).json({
+      message: "Email verified successfully. You can now log in."
     });
   } catch (err) {
     return res.status(400).json({ message: "Invalid or expired token" });
@@ -230,18 +245,18 @@ async function resendVerificationEmail(req, res, next) {
   try {
     const { email } = req.body;
     const user = await User.findOne({ email: email.toLowerCase().trim() });
-    
+
     if (!user) {
       return res.status(404).json({ message: "User not found." });
     }
-    
+
     if (user.isEmailVerified) {
       return res.status(400).json({ message: "Email already verified." });
     }
 
     const emailSent = await sendVerificationEmail(user);
     const safeUser = await User.findById(user._id).select("-password");
-    
+
     res.json({ message: "Verification email resent.", data: safeUser, emailSent });
   } catch (err) {
     next(err);
@@ -252,20 +267,19 @@ async function resendVerificationEmail(req, res, next) {
 async function forgotPassword(req, res, next) {
   try {
     const { email } = req.body;
-    
+
     const user = await User.findOne({ email: email.toLowerCase().trim() });
-    
-    // Don't reveal if user exists
+
     if (!user) {
       console.log(`Password reset attempted for non-existent email: ${email}`);
-      return res.json({ 
-        message: "If your email is registered, you'll receive a password reset link shortly." 
+      return res.json({
+        message: "If your email is registered, you'll receive a password reset link shortly."
       });
     }
 
     if (user.authProvider === "google" && !user.password) {
-      return res.json({ 
-        message: "If your email is registered, you'll receive a password reset link shortly. Note: Google sign-in accounts cannot reset passwords this way." 
+      return res.json({
+        message: "If your email is registered, you'll receive a password reset link shortly. Note: Google sign-in accounts cannot reset passwords this way."
       });
     }
 
@@ -275,8 +289,7 @@ async function forgotPassword(req, res, next) {
     await user.save();
 
     const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
-    
-    // Use new sendEmail format (to, subject, html)
+
     const result = await sendEmail(
       user.email,
       "Reset Your Password - Game Tracker",
@@ -294,9 +307,8 @@ async function forgotPassword(req, res, next) {
       console.error("Failed to send password reset email:", result.error);
     }
 
-    // Always return generic success
-    res.json({ 
-      message: "If your email is registered, you'll receive a password reset link shortly." 
+    res.json({
+      message: "If your email is registered, you'll receive a password reset link shortly."
     });
   } catch (err) {
     next(err);
@@ -307,12 +319,11 @@ async function forgotPassword(req, res, next) {
 async function resetPassword(req, res, next) {
   try {
     const { token, password } = req.body;
-    
+
     if (!token || !password) {
       return res.status(400).json({ message: "Missing token or password." });
     }
 
-    // Verify JWT token structure
     let payload;
     try {
       payload = jwt.verify(token, process.env.JWT_SECRET);
@@ -325,49 +336,40 @@ async function resetPassword(req, res, next) {
       return res.status(404).json({ message: "User not found." });
     }
 
-    // Check if this is a Google account
     if (user.authProvider !== "local") {
-      return res.status(400).json({ 
-        message: "This account uses Google sign-in. Use Google to log in." 
+      return res.status(400).json({
+        message: "This account uses Google sign-in. Use Google to log in."
       });
     }
 
-    // Validate the token matches the one in database
     if (!user.resetPasswordToken || user.resetPasswordToken !== token) {
-      return res.status(400).json({ 
-        message: "Invalid or already-used token. Please request a new password reset." 
+      return res.status(400).json({
+        message: "Invalid or already-used token. Please request a new password reset."
       });
     }
 
-    // Check if token has expired
     if (!user.resetPasswordExpires || Date.now() > user.resetPasswordExpires) {
-      // Clear expired token
       user.resetPasswordToken = undefined;
       user.resetPasswordExpires = undefined;
       await user.save();
-      
-      return res.status(400).json({ 
-        message: "Token has expired. Please request a new password reset." 
+
+      return res.status(400).json({
+        message: "Token has expired. Please request a new password reset."
       });
     }
 
-    // Validate password strength
     if (password.length < 8) {
-      return res.status(400).json({ 
-        message: "Password must be at least 8 characters long." 
+      return res.status(400).json({
+        message: "Password must be at least 8 characters long."
       });
     }
 
-    // Update password
-    user.password = password; // pre-save hook will hash it
-    
-    // Invalidate the reset token immediately
+    user.password = password;
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
-    
+
     await user.save();
 
-    // AUTO-LOGIN: Generate new login token
     const freshToken = createToken(user);
     const safeUser = await User.findById(user._id).select("-password");
 

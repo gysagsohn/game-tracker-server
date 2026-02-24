@@ -11,7 +11,7 @@ app.set("trust proxy", 1);
 
 // Build an allowlist for known origins (prod + dev)
 const STATIC_ALLOWED = [
-  FRONTEND_URL,             // e.g. https://gy-gametracker.netlify.app
+  FRONTEND_URL,             
   "http://localhost:5173",  // Vite dev
 ].filter(Boolean);
 

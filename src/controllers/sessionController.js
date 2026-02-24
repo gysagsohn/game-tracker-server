@@ -165,9 +165,17 @@ async function updateSession(req, res, next) {
     const session = await Session.findById(req.params.id);
     if (!session) return res.status(404).json({ message: "Session not found." });
 
+    const userId = req.user._id.toString();
+
+    // Allow any registered player in the match (or admin) to edit
+    const isPlayer = session.players.some(p => p.user && p.user.toString() === userId);
+    const isAdmin = req.user.role === "admin";
+    if (!isPlayer && !isAdmin) {
+      return res.status(403).json({ message: "Only players in this match can edit it." });
+    }
+
     const { game, players, notes, date } = req.body;
 
-    // Sanitize if provided
     const sanitizedNotes = notes !== undefined && typeof notes === "string"
       ? sanitizeString(notes)
       : notes;
@@ -181,18 +189,28 @@ async function updateSession(req, res, next) {
     if (date !== undefined) session.date = date;
 
     if (sanitizedPlayers !== undefined) {
-      session.players = sanitizedPlayers.map(p => ({
-        ...p,
-        confirmed: !p.user || false // Only guests auto-confirmed
-      }));
+      // KEY FIX: preserve existing confirmed state — don't reset it on edit
+      session.players = sanitizedPlayers.map(p => {
+        if (!p.user) {
+          // Guests are always confirmed
+          return { ...p, confirmed: true };
+        }
+        // Find existing player to preserve their confirmed status
+        const existing = session.players.find(
+          ep => ep.user && ep.user.toString() === p.user.toString()
+        );
+        return {
+          ...p,
+          confirmed: existing ? existing.confirmed : false,
+          confirmedAt: existing?.confirmedAt
+        };
+      });
 
-      // Recalculate matchStatus
       const anyUnconfirmed = session.players.some(p => p.user && !p.confirmed);
       session.matchStatus = anyUnconfirmed ? "Pending" : "Confirmed";
     }
 
     session.lastEditedBy = req.user._id;
-
     await session.save();
 
     await session
@@ -205,17 +223,19 @@ async function updateSession(req, res, next) {
 
     // Notify other registered players about the update
     try {
-      const updaterId = req.user._id.toString();
+      const editorName = `${req.user.firstName} ${req.user.lastName}`.trim() || "A player";
+      const gameName = session.game?.name || "the match";
       const recipients = session.players
-        .filter(p => p.user && p.user._id && p.user._id.toString() !== updaterId)
+        .filter(p => p.user && p.user._id && p.user._id.toString() !== userId)
         .map(p => p.user._id);
+
       if (recipients.length) {
         await Notification.insertMany(
           recipients.map(uid => ({
             recipient: uid,
             sender: req.user._id,
             type: NotificationTypes.MATCH_UPDATED,
-            message: `Match was updated.`,
+            message: `${editorName} updated the ${gameName} match details.`,
             session: session._id
           }))
         );
@@ -245,8 +265,9 @@ async function confirmSession(req, res, next) {
   try {
     const session = await Session.findById(req.params.id)
       .populate("game")
+      .populate("players.user", "firstName lastName email")
       .populate("createdBy", "firstName lastName");
-    
+
     if (!session) return res.status(404).json({ message: "Match not found." });
 
     const userId = req.user._id.toString();
@@ -254,7 +275,7 @@ async function confirmSession(req, res, next) {
     let myResult = "";
 
     session.players.forEach(player => {
-      if (player.user && player.user.toString() === userId) {
+      if (player.user && player.user._id.toString() === userId) {
         player.confirmed = true;
         player.confirmedAt = new Date();
         myResult = player.result || "their result";
@@ -266,32 +287,69 @@ async function confirmSession(req, res, next) {
       return res.status(403).json({ message: "You are not a registered player in this match." });
     }
 
-    const anyUnconfirmed = session.players.some(p => p.user && !p.confirmed);
+    const stillPending = session.players.filter(p => p.user && !p.confirmed);
+    const anyUnconfirmed = stillPending.length > 0;
     session.matchStatus = anyUnconfirmed ? "Pending" : "Confirmed";
 
     await session.save();
     await logUserActivity(req.user._id, "Confirmed Match", { sessionId: session._id });
 
+    // Build notification context
+    const confirmingUser = await User.findById(userId).select("firstName lastName");
+    const confirmerName = confirmingUser
+      ? `${confirmingUser.firstName} ${confirmingUser.lastName}`.trim()
+      : "A player";
+    const gameName = session.game?.name || "the match";
+
+    // Names of who is still pending (for "waiting on" message)
+    const pendingNames = stillPending
+      .map(p => p.user?.firstName || "Someone")
+      .join(", ");
+
     try {
-      if (session.createdBy && session.createdBy._id.toString() !== userId) {
-        // Get confirming user's name
-        const confirmingUser = await User.findById(userId).select("firstName lastName");
-        const confirmerName = confirmingUser 
-          ? `${confirmingUser.firstName} ${confirmingUser.lastName}`.trim()
-          : "A player";
-        
-        const gameName = session.game?.name || "the match";
-        
-        await Notification.create({
-          recipient: session.createdBy._id,
+      const notifications = [];
+
+      for (const player of session.players) {
+        if (!player.user) continue;
+        const recipientId = player.user._id.toString();
+        if (recipientId === userId) continue; 
+
+        const isStillPending = !player.confirmed;
+
+        let message;
+        if (isStillPending) {
+          // Tell pending players they're being waited on
+          const othersConfirmed = session.players
+            .filter(p => p.user && p.user._id.toString() !== recipientId && p.confirmed)
+            .map(p => p.user.firstName || "Someone");
+
+          const confirmedList = othersConfirmed.length > 0
+            ? othersConfirmed.join(", ")
+            : confirmerName;
+
+          message = `${confirmerName} confirmed their result for ${gameName}. ${confirmedList} ${othersConfirmed.length === 1 ? "has" : "have"} confirmed — still waiting on you.`;
+        } else {
+          if (anyUnconfirmed) {
+            message = `${confirmerName} confirmed their result for ${gameName}. Still waiting on: ${pendingNames}.`;
+          } else {
+            message = `All players have confirmed ${gameName}. Match is fully confirmed!`;
+          }
+        }
+
+        notifications.push({
+          recipient: player.user._id,
           sender: req.user._id,
           type: NotificationTypes.MATCH_CONFIRMED,
-          message: `${confirmerName} confirmed their ${myResult} result for ${gameName}.`,
+          message,
           session: session._id
         });
       }
+
+      if (notifications.length) {
+        await Notification.insertMany(notifications);
+      }
     } catch (e) {
-      console.warn("Failed to emit MATCH_CONFIRMED notification:", e.message);
+      console.warn("Failed to emit MATCH_CONFIRMED notifications:", e.message);
     }
 
     res.json({ message: "Match confirmed", data: { matchStatus: session.matchStatus } });
