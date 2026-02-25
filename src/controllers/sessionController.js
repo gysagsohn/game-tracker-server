@@ -167,7 +167,6 @@ async function updateSession(req, res, next) {
 
     const userId = req.user._id.toString();
 
-    // Allow any registered player in the match (or admin) to edit
     const isPlayer = session.players.some(p => p.user && p.user.toString() === userId);
     const isAdmin = req.user.role === "admin";
     if (!isPlayer && !isAdmin) {
@@ -189,16 +188,17 @@ async function updateSession(req, res, next) {
     if (date !== undefined) session.date = date;
 
     if (sanitizedPlayers !== undefined) {
-      // KEY FIX: preserve existing confirmed state — don't reset it on edit
+      const existingPlayers = session.players.map(p => ({
+        userId: p.user ? p.user.toString() : null,
+        confirmed: p.confirmed,
+        confirmedAt: p.confirmedAt
+      }));
+
       session.players = sanitizedPlayers.map(p => {
         if (!p.user) {
-          // Guests are always confirmed
           return { ...p, confirmed: true };
         }
-        // Find existing player to preserve their confirmed status
-        const existing = session.players.find(
-          ep => ep.user && ep.user.toString() === p.user.toString()
-        );
+        const existing = existingPlayers.find(ep => ep.userId === p.user.toString());
         return {
           ...p,
           confirmed: existing ? existing.confirmed : false,
@@ -221,7 +221,6 @@ async function updateSession(req, res, next) {
 
     await logUserActivity(req.user._id, "Updated Match", { sessionId: session._id });
 
-    // Notify other registered players about the update
     try {
       const editorName = `${req.user.firstName} ${req.user.lastName}`.trim() || "A player";
       const gameName = session.game?.name || "the match";
@@ -249,6 +248,7 @@ async function updateSession(req, res, next) {
     next(err);
   }
 }
+
 
 // DELETE /sessions/:id
 async function deleteSession(req, res, next) {
@@ -294,17 +294,12 @@ async function confirmSession(req, res, next) {
     await session.save();
     await logUserActivity(req.user._id, "Confirmed Match", { sessionId: session._id });
 
-    // Build notification context
     const confirmingUser = await User.findById(userId).select("firstName lastName");
     const confirmerName = confirmingUser
       ? `${confirmingUser.firstName} ${confirmingUser.lastName}`.trim()
       : "A player";
     const gameName = session.game?.name || "the match";
-
-    // Names of who is still pending (for "waiting on" message)
-    const pendingNames = stillPending
-      .map(p => p.user?.firstName || "Someone")
-      .join(", ");
+    const pendingNames = stillPending.map(p => p.user?.firstName || "Someone").join(", ");
 
     try {
       const notifications = [];
@@ -312,13 +307,21 @@ async function confirmSession(req, res, next) {
       for (const player of session.players) {
         if (!player.user) continue;
         const recipientId = player.user._id.toString();
-        if (recipientId === userId) continue; 
 
+        // FIX: removed the skip for confirmer — they get notified when match is fully confirmed
+        const isConfirmer = recipientId === userId;
         const isStillPending = !player.confirmed;
 
         let message;
-        if (isStillPending) {
-          // Tell pending players they're being waited on
+
+        if (isConfirmer) {
+          // Only notify the confirmer if the match is now fully confirmed
+          if (!anyUnconfirmed) {
+            message = `All players have confirmed ${gameName}. Match is fully confirmed!`;
+          } else {
+            continue; // confirmer doesn't need an intermediate notification
+          }
+        } else if (isStillPending) {
           const othersConfirmed = session.players
             .filter(p => p.user && p.user._id.toString() !== recipientId && p.confirmed)
             .map(p => p.user.firstName || "Someone");
@@ -329,6 +332,7 @@ async function confirmSession(req, res, next) {
 
           message = `${confirmerName} confirmed their result for ${gameName}. ${confirmedList} ${othersConfirmed.length === 1 ? "has" : "have"} confirmed — still waiting on you.`;
         } else {
+          // Already confirmed, not the confirmer
           if (anyUnconfirmed) {
             message = `${confirmerName} confirmed their result for ${gameName}. Still waiting on: ${pendingNames}.`;
           } else {
