@@ -213,7 +213,8 @@ async function updateSession(req, res, next) {
     session.lastEditedBy = req.user._id;
     await session.save();
 
-    await session
+    
+    const populated = await Session.findById(session._id)
       .populate("game")
       .populate("players.user", "firstName lastName email")
       .populate("lastEditedBy", "firstName lastName email")
@@ -221,10 +222,11 @@ async function updateSession(req, res, next) {
 
     await logUserActivity(req.user._id, "Updated Match", { sessionId: session._id });
 
+    // Notify other players of the update
     try {
       const editorName = `${req.user.firstName} ${req.user.lastName}`.trim() || "A player";
-      const gameName = session.game?.name || "the match";
-      const recipients = session.players
+      const gameName = populated.game?.name || "the match";
+      const recipients = populated.players
         .filter(p => p.user && p.user._id && p.user._id.toString() !== userId)
         .map(p => p.user._id);
 
@@ -243,12 +245,11 @@ async function updateSession(req, res, next) {
       console.warn("Failed to emit MATCH_UPDATED notifications:", e.message);
     }
 
-    res.json({ message: "Session updated", data: session });
+    res.json({ message: "Session updated", data: populated });
   } catch (err) {
     next(err);
   }
 }
-
 
 // DELETE /sessions/:id
 async function deleteSession(req, res, next) {
