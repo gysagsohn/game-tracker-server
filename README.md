@@ -1,8 +1,8 @@
 <p align="center">
-  <a href="https://github.com/gysagsohn/game-tracker-server">
-    <img src="https://img.shields.io/github/stars/gysagsohn/game-tracker-server?style=social" alt="GitHub stars">
+  <a href="https://github.com/gysagsohn/keeptrack.online-server">
+    <img src="https://img.shields.io/github/stars/gysagsohn/keeptrack.online-server?style=social" alt="GitHub stars">
   </a>
-  <a href="https://app.netlify.com/sites/gy-gametracker/deploys">
+  <a href="https://app.netlify.com/sites/keeptrack/deploys">
     <img src="https://api.netlify.com/api/v1/badges/54a5c9e5-9595-48c7-a422-221e8a15bc1d/deploy-status" alt="Netlify Frontend">
   </a>
   <a href="https://game-tracker-server-zq2k.onrender.com">
@@ -11,15 +11,15 @@
   <img src="https://img.shields.io/badge/status-live-brightgreen" alt="App status">
 </p>
 
-# Game Tracker Backend – Express + MongoDB API
+# Keep Track – Backend API (Express + MongoDB)
 
-Production-ready backend API for [Game Tracker](https://github.com/gysagsohn/game-tracker-client), a full-stack MERN application for tracking board and card game results with friends.
+Production-ready backend API for [Keep Track](https://github.com/gysagsohn/keeptrack.online-client), a full-stack MERN application for tracking board and card game results with friends.
 
-**Frontend Repository:** [game-tracker-client](https://github.com/gysagsohn/game-tracker-client)
+**Frontend Repository:** [keeptrack.online-client](https://github.com/gysagsohn/keeptrack.online-client)
 
 ## Live Deployment
 - **Backend API**: [https://game-tracker-server-zq2k.onrender.com](https://game-tracker-server-zq2k.onrender.com)
-- **Frontend App**: [https://gy-gametracker.netlify.app](https://gy-gametracker.netlify.app)
+- **Frontend App**: [https://keeptrack.online](https://keeptrack.online)
 
 ---
 
@@ -27,7 +27,7 @@ Production-ready backend API for [Game Tracker](https://github.com/gysagsohn/gam
 
 I was using Google Keep to track board game wins and losses with my friends—copying and pasting names, manually updating scores, and scrolling through endless notes to find past results. It was messy and inefficient.
 
-I wanted a proper solution: a full-stack web app where we could log matches, confirm results, view statistics, and keep everything organized. Game Tracker was born from this need, and it became a portfolio project showcasing production-ready development practices.
+I wanted a proper solution: a full-stack web app where we could log matches, confirm results, view statistics, and keep everything organized. Keep Track was born from this need, and it became a portfolio project showcasing production-ready development practices.
 
 ---
 
@@ -46,7 +46,7 @@ I wanted a proper solution: a full-stack web app where we could log matches, con
 ### Authentication & Security
 - JWT-based authentication with email verification
 - Google OAuth integration via Passport.js
-- Enterprise-grade security 
+- Enterprise-grade security
 - OAuth redirect validation (phishing prevention)
 - Single-use password reset tokens with auto-login
 - Comprehensive rate limiting on all sensitive endpoints
@@ -95,7 +95,7 @@ I wanted a proper solution: a full-stack web app where we could log matches, con
 
 ## Security Architecture
 
-Game Tracker implements enterprise-grade security with a **10/10 security score**, protecting against:
+Keep Track implements enterprise-grade security with a **10/10 security score**, protecting against:
 - Brute force attacks (rate limiting)
 - OAuth phishing (redirect validation)
 - XSS attacks (input sanitization)
@@ -113,7 +113,7 @@ Game Tracker implements enterprise-grade security with a **10/10 security score*
 
 ## Project Structure
 ```bash
-game-tracker-server/
+keeptrack-server/
 ├── src/
 │   ├── config/           # Database, OAuth, environment validation
 │   ├── controllers/      # Business logic (auth, users, sessions, games, friends, admin)
@@ -137,7 +137,7 @@ game-tracker-server/
 ## Getting Started
 
 ### Prerequisites
-- Node.js 18+ 
+- Node.js 18+
 - MongoDB database (local or Atlas)
 - Resend API key (for email features)
 - Google OAuth credentials (optional)
@@ -146,8 +146,8 @@ game-tracker-server/
 
 1. **Clone the repository**
 ```bash
-git clone git@github.com:gysagsohn/game-tracker-server.git
-cd game-tracker-server
+git clone git@github.com:gysagsohn/keeptrack.online-server.git
+cd keeptrack.online-server
 ```
 
 2. **Install dependencies**
@@ -184,6 +184,20 @@ ADMIN_LAST_NAME=Name
 ```
 
 **Security Note:** Never commit `.env` to version control! Copy `.env.example` instead.
+
+### Email Setup (Resend)
+
+Keep Track uses [Resend](https://resend.com) for transactional emails (verification, password reset, match invites).
+
+**Important for production:** Resend requires a verified sending domain before emails will deliver to real users. Free tier only allows sending to your own verified email address until your domain is verified.
+
+Steps to set up:
+1. Create a free account at [resend.com](https://resend.com)
+2. Add and verify your sending domain under **Domains**
+3. Copy your API key into `RESEND_API_KEY`
+4. Update the `from` address in your email utility to match your verified domain
+
+Without a verified domain, email features (verification, password reset, guest invites, match reminders) will not work in production.
 
 4. **Seed the database**
 ```bash
@@ -280,7 +294,7 @@ npm run reset        # Clear all database collections
 - `DATABASE_URL` - MongoDB connection string
 - `JWT_SECRET` - Random string (32+ characters)
 - `RESEND_API_KEY` - Resend API key
-- `FRONTEND_URL` - Your Netlify URL
+- `FRONTEND_URL` - `https://keeptrack.online`
 - `SERVER_URL` - Your Render URL
 - `NODE_ENV` - `production`
 
@@ -295,33 +309,17 @@ npm run reset        # Clear all database collections
 - Environment variables configured on Render
 - MongoDB Atlas ready
 - Database seeded
-- CORS configured for frontend URL
+- CORS configured for `https://keeptrack.online`
 - OAuth callbacks updated to production URLs
+- Resend domain verified for production emails
 - Rate limiting tested
-
----
-
-## Testing
-```bash
-# Test rate limiting
-for i in {1..6}; do
-  curl -X POST http://localhost:3001/api/auth/login \
-    -H "Content-Type: application/json" \
-    -d '{"email":"test@test.com","password":"wrong"}'
-  echo "\nAttempt $i"
-done
-# Attempt 6 should return 429 (rate limited)
-
-# Verify database indexes
-node src/scripts/checkIndexes.js
-```
 
 ---
 
 ## Author
 
-**Gy Sohn**  
-Full-Stack Developer  
+**Gy Sohn**
+Full-Stack Developer
 [LinkedIn](https://www.linkedin.com/in/gysohn) | [GitHub](https://github.com/gysagsohn) | [Portfolio](https://gysohn.com)
 
 Built as a portfolio project demonstrating:
@@ -354,7 +352,7 @@ Feedback and suggestions welcome! Open an issue or submit a PR.
 
 ## Recent Updates
 
-### Version 2.0 - Security Sprint (February 2026) 
+### Version 2.0 - Security Sprint (February 2026)
 
 **Complete security overhaul achieving 10/10 security score.**
 
@@ -364,14 +362,6 @@ Feedback and suggestions welcome! Open an issue or submit a PR.
 - Validates redirect URIs against allowlist
 - Prevents open redirect phishing attacks
 - Blocks token theft via malicious redirects
-```javascript
-function isValidRedirectUri(uri) {
-  const allowedOrigins = [FRONTEND_URL, 'http://localhost:5173'];
-  return allowedOrigins.some(allowed => 
-    new URL(uri).origin === new URL(allowed).origin
-  );
-}
-```
 
 **Fix #2: Password Reset Token Security**
 - Single-use tokens with immediate invalidation
@@ -384,17 +374,8 @@ function isValidRedirectUri(uri) {
 - Atomic database operations (`findOneAndUpdate`)
 - Prevents duplicate verification attempts
 - Idempotent verification endpoint
-```javascript
-await User.findOneAndUpdate(
-  { _id: userId, isEmailVerified: false },
-  { $set: { isEmailVerified: true } },
-  { new: true }
-);
-```
 
 **Fix #4: Comprehensive Rate Limiting**
-
-All sensitive endpoints now protected:
 
 | Endpoint | Limit | Window | Protection |
 |----------|-------|--------|------------|
@@ -405,35 +386,14 @@ All sensitive endpoints now protected:
 | Match reminders | 3 req | 1 hour | Email bombing |
 | General API | 100 req | 1 min | DDoS |
 
-Configurable via environment variables:
-```bash
-AUTH_RATE_MAX=5
-AUTH_RATE_WINDOW_MS=600000
-FRIEND_RATE_MAX=5
-```
-
 **Fix #5: Input Sanitization Audit**
 - All user inputs sanitized to prevent XSS
 - Search queries sanitized (NoSQL injection prevention)
 - Triple-layer validation: Joi → Sanitization → Mongoose
 
-**Sanitization utilities:**
-```javascript
-sanitizeString(str)     // Removes HTML/script tags
-sanitizeObject(obj, allowedFields)  // Whitelists fields
-sanitizeArray(arr, fields)  // Sanitizes array elements
-```
-
-**Applied to:**
-- User search queries
-- Friend request emails
-- Match notes and player names
-- User profile updates
-- Game descriptions
-
 #### Defense-in-Depth Architecture
 
-**6 Layers of Protection:**
+6 Layers of Protection:
 1. **Input Validation** - Joi schema validation, field whitelisting
 2. **Sanitization** - HTML entity encoding, script removal
 3. **Authentication** - JWT with expiration, bcrypt hashing
@@ -441,34 +401,14 @@ sanitizeArray(arr, fields)  // Sanitizes array elements
 5. **Rate Limiting** - Endpoint-specific limits, IP tracking
 6. **Database** - Mongoose validation, atomic operations
 
-#### Attack Vectors Blocked
-
-| Attack Type | Protection | Status |
-|-------------|-----------|--------|
-| Brute Force Password | Rate limiting (5/10min) | BLOCKED |
-| Token Reuse | Single-use reset tokens | BLOCKED |
-| OAuth Phishing | Redirect URI validation | BLOCKED |
-| XSS Attacks | Input sanitization | BLOCKED |
-| NoSQL Injection | Query sanitization | BLOCKED |
-| Email Bombing | Rate limiting | BLOCKED |
-| Account Enumeration | Generic errors | BLOCKED |
-| Race Conditions | Atomic operations | BLOCKED |
-| Data Scraping | Search rate limiting | BLOCKED |
-| Spam Creation | Creation rate limiting | BLOCKED |
-
-#### Additional Security Enhancements
+#### Additional Enhancements
 - Removed hardcoded admin credentials from seed script
 - Environment variable validation on startup
 - Centralized security utilities
 - JSON responses for rate limit errors
 - Comprehensive error handling
-
-#### Performance Optimizations
 - Strategic database indexes (10-100x query performance)
 - Activity log capping (100 entries per user)
-- Query optimization with compound indexes
-- Eliminated N+1 query problems
-
 
 ---
 
