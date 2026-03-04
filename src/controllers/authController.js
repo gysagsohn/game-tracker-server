@@ -1,7 +1,7 @@
 const User = require("../models/UserModel");
 const jwt = require("jsonwebtoken");
 const sendEmail = require("../utils/sendEmail");
-const linkGuestSessions = require("../utils/linkGuestSessions.js  ");
+const linkGuestSessions = require("../utils/linkGuestSessions");
 
 /** Create a signed JWT for a user (7-day expiry) */
 function createToken(user) {
