@@ -12,8 +12,8 @@ router.use(auth);
 // Rate limit sending friend requests
 const friendRequestLimiter = makeLimiter({
   envPrefix: "FRIEND",
-  defaultMax: RATE_LIMIT.FRIEND_REQUEST_MAX, // Use constant
-  defaultWindowMs: RATE_LIMIT.FRIEND_REQUEST_WINDOW_MS, // Use constant
+  defaultMax: RATE_LIMIT.FRIEND_REQUEST_MAX, 
+  defaultWindowMs: RATE_LIMIT.FRIEND_REQUEST_WINDOW_MS, 
   message: "Too many friend requests sent. Please try again later.",
 });
 

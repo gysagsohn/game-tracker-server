@@ -83,7 +83,7 @@ async function seed() {
     }
   }
 
-  // ✅ SECURE: Get admin credentials from environment variables
+  //  Get admin credentials from environment variables
   const adminEmail = process.env.ADMIN_EMAIL;
   const adminPassword = process.env.ADMIN_PASSWORD;
   const adminFirstName = process.env.ADMIN_FIRST_NAME || "Admin";

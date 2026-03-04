@@ -107,7 +107,7 @@ Keep Track implements enterprise-grade security with a **10/10 security score**,
 
 **Defense-in-Depth:** 6 layers of protection (Input Validation → Sanitization → Authentication → Authorization → Rate Limiting → Database)
 
-**See detailed security documentation in [Version 2.0 section](#version-20---security-sprint-february-2026-)** ⬇️
+**See detailed security documentation in Version 2.0 section
 
 ---
 
@@ -353,10 +353,6 @@ Feedback and suggestions welcome! Open an issue or submit a PR.
 ## Recent Updates
 
 ### Version 2.0 - Security Sprint (February 2026)
-
-**Complete security overhaul achieving 10/10 security score.**
-
-#### Security Fixes (5/5 Complete)
 
 **Fix #1: OAuth Redirect Validation**
 - Validates redirect URIs against allowlist

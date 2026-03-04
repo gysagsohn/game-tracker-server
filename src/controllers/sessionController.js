@@ -138,7 +138,7 @@ async function sendGuestInviteEmail(email, name = "Player") {
     `
   });
   
-  const result = await sendEmail(email, "Game Tracker Invite – Claim Your Games", wrapped);
+  const result = await sendEmail(email, "Keep Track – Claim Your Games", wrapped);
   return result.ok;
 }
 
@@ -252,10 +252,42 @@ async function updateSession(req, res, next) {
 }
 
 // DELETE /sessions/:id
+// Only the match creator (or an admin) can delete a match.
 async function deleteSession(req, res, next) {
   try {
+    const session = await Session.findById(req.params.id);
+    if (!session) return res.status(404).json({ message: "Session not found." });
+
+    const userId = req.user._id.toString();
+    const isCreator = session.createdBy && session.createdBy.toString() === userId;
+    const isAdmin = req.user.role === "admin";
+
+    if (!isCreator && !isAdmin) {
+      return res.status(403).json({ message: "Only the match creator can delete this match." });
+    }
+
     await Session.findByIdAndDelete(req.params.id);
-    res.status(204).end(); // proper empty 204
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /sessions/my-pending
+// Returns matches where the current user specifically has not confirmed.
+// Uses $elemMatch to ensure both conditions apply to the SAME player entry.
+async function getMyPendingSessions(req, res, next) {
+  try {
+    const sessions = await Session.find({
+      players: {
+        $elemMatch: {
+          user: req.user._id,
+          confirmed: false
+        }
+      }
+    }).populate("game players.user");
+
+    res.json({ message: "Fetched pending matches", data: sessions });
   } catch (err) {
     next(err);
   }
@@ -523,19 +555,6 @@ async function remindMatchConfirmation(req, res, next) {
   }
 }
 
-// GET /sessions/pending
-async function getMyPendingSessions(req, res, next) {
-  try {
-    const sessions = await Session.find({
-      "players.user": req.user.id,
-      "players.confirmed": false
-    }).populate("game players.user");
-
-    res.json({ message: "Fetched pending matches", data: sessions });
-  } catch (err) {
-    next(err);
-  }
-}
 
 
 module.exports = {

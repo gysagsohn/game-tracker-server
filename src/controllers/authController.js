@@ -3,24 +3,32 @@ const jwt = require("jsonwebtoken");
 const sendEmail = require("../utils/sendEmail");
 const Session = require("../models/SessionModel");
 
-// Helper: Create a JWT
+/** Create a signed JWT for a user (7-day expiry) */
 function createToken(user) {
   return jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
 }
 
-// Helper: Send email verification link
+/**
+ * Send an email verification link to a newly registered user.
+ * Token is a short-lived JWT (1 hour). Link is NOT logged in production.
+ *
+ * @param {Object} user - Mongoose User document
+ * @returns {Promise<boolean>} true if email sent successfully
+ */
 async function sendVerificationEmail(user) {
   const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
   const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
 
-  console.log(`📧 Sending verification email to: ${user.email}`);
-  console.log(`🔗 Verification link: ${verificationLink}`);
+  // Only log the link in development — the token is sensitive
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`Verification link for ${user.email}: ${verificationLink}`);
+  }
 
   const result = await sendEmail(
     user.email,
-    "Verify Your Email - Game Tracker",
+    "Verify Your Email – Keep Track",
     `
-      <h2>Welcome to Game Tracker!</h2>
+      <h2>Welcome to Keep Track!</h2>
       <p>Hi ${user.firstName},</p>
       <p>Thanks for signing up! Click the button below to verify your email address:</p>
       <p><a href="${verificationLink}" style="display: inline-block; padding: 12px 24px; background: #5865F2; color: white; text-decoration: none; border-radius: 8px;">Verify Email</a></p>
@@ -30,15 +38,13 @@ async function sendVerificationEmail(user) {
   );
 
   if (!result.ok) {
-    console.error("❌ Failed to send verification email:", result.error);
-  } else {
-    console.log(`✅ Verification email sent successfully to ${user.email}`);
+    console.error("Failed to send verification email:", result.error);
   }
 
   return result.ok;
 }
 
-// Signup
+// Signup 
 async function signup(req, res, next) {
   try {
     const { firstName, lastName, email, password } = req.body;
@@ -62,9 +68,8 @@ async function signup(req, res, next) {
     });
 
     await newUser.save();
-    console.log(`✅ User created: ${newUser.email}`);
 
-    // Link guest matches + auto-friend inviters
+    // Link any guest matches created before this user signed up
     const sessionsWithGuest = await Session.find({
       'players.email': newUser.email,
       'players.user': null
@@ -80,35 +85,25 @@ async function signup(req, res, next) {
             player.confirmed = true;
           }
         });
-
-        if (session.createdBy) {
-          inviterIds.add(session.createdBy.toString());
-        }
-
+        if (session.createdBy) inviterIds.add(session.createdBy.toString());
         await session.save();
       }
-
-      console.log(`Synced ${sessionsWithGuest.length} guest match(es) to ${newUser.email}`);
 
       // Auto-friend each match creator
       for (const inviterId of inviterIds) {
         if (inviterId === newUser._id.toString()) continue;
-
         try {
           const inviter = await User.findById(inviterId);
           if (!inviter) continue;
-
           const alreadyFriends = newUser.friends?.some(f => f.toString() === inviterId);
           if (!alreadyFriends) {
             newUser.friends = newUser.friends || [];
             newUser.friends.push(inviterId);
-
             inviter.friends = inviter.friends || [];
             if (!inviter.friends.some(f => f.toString() === newUser._id.toString())) {
               inviter.friends.push(newUser._id);
             }
             await inviter.save();
-            console.log(`Auto-friended ${newUser.email} with inviter ${inviter.email}`);
           }
         } catch (friendErr) {
           console.warn("Auto-friend failed for inviter", inviterId, friendErr.message);
@@ -117,13 +112,13 @@ async function signup(req, res, next) {
 
       await newUser.save();
 
-      // Notify new user their matches have been linked
+      // Notify the new user that their past matches have been linked
       try {
         const result = await sendEmail(
           newUser.email,
-          'Your Guest Matches Have Been Linked!',
+          'Your Guest Matches Have Been Linked! – Keep Track',
           `
-            <h2>Welcome to Game Tracker, ${newUser.firstName}!</h2>
+            <h2>Welcome to Keep Track, ${newUser.firstName}!</h2>
             <p>Good news! We found <strong>${sessionsWithGuest.length} match(es)</strong> where you were invited as a guest.</p>
             <p>These have now been linked to your new account.</p>
             <p><a href="${process.env.FRONTEND_URL}/matches" style="display: inline-block; padding: 10px 20px; background: #5865F2; color: white; text-decoration: none; border-radius: 8px;">View Your Matches</a></p>
@@ -135,11 +130,7 @@ async function signup(req, res, next) {
       }
     }
 
-    // Send verification email
-    console.log(`📧 Attempting to send verification email to ${newUser.email}...`);
     const emailSent = await sendVerificationEmail(newUser);
-    console.log(`📧 Verification email result: ${emailSent ? 'SUCCESS ✅' : 'FAILED ❌'}`);
-
     const safeUser = await User.findById(newUser._id).select("-password");
 
     return res.status(201).json({
@@ -148,12 +139,12 @@ async function signup(req, res, next) {
       emailSent,
     });
   } catch (err) {
-    console.error("❌ Signup error:", err);
+    console.error("Signup error:", err);
     next(err);
   }
 }
 
-// Login
+// Login 
 async function login(req, res, next) {
   try {
     const { email, password } = req.body;
@@ -186,40 +177,33 @@ async function login(req, res, next) {
 
     const token = createToken(user);
     const safeUser = await User.findById(user._id).select("-password");
-
     res.json({ user: safeUser, token });
   } catch (err) {
     next(err);
   }
 }
 
-// Email verification
+// Email verification 
 async function verifyEmail(req, res, next) {
   try {
     const token = req.query.token;
-    if (!token) {
-      return res.status(400).json({ message: "Token missing" });
-    }
+    if (!token) return res.status(400).json({ message: "Token missing" });
 
     let decoded;
     try {
       decoded = jwt.verify(token, process.env.JWT_SECRET);
-    } catch (err) {
+    } catch {
       return res.status(400).json({ message: "Invalid or expired token" });
     }
 
     const user = await User.findById(decoded.id).select("-password");
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
+    if (!user) return res.status(404).json({ message: "User not found" });
 
     if (user.isEmailVerified) {
-      return res.status(200).json({
-        message: "Email already verified. You can log in now."
-      });
+      return res.status(200).json({ message: "Email already verified. You can log in now." });
     }
 
+    // Atomic update — prevents duplicate verification on concurrent requests
     const result = await User.findOneAndUpdate(
       { _id: decoded.id, isEmailVerified: false },
       { $set: { isEmailVerified: true } },
@@ -227,51 +211,41 @@ async function verifyEmail(req, res, next) {
     ).select("-password");
 
     if (!result) {
-      return res.status(200).json({
-        message: "Email already verified. You can log in now."
-      });
+      return res.status(200).json({ message: "Email already verified. You can log in now." });
     }
 
-    res.status(200).json({
-      message: "Email verified successfully. You can now log in."
-    });
-  } catch (err) {
+    res.status(200).json({ message: "Email verified successfully. You can now log in." });
+  } catch {
     return res.status(400).json({ message: "Invalid or expired token" });
   }
 }
 
-// Resend email verification
+//  Resend verification email 
 async function resendVerificationEmail(req, res, next) {
   try {
     const { email } = req.body;
     const user = await User.findOne({ email: email.toLowerCase().trim() });
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
-    }
-
-    if (user.isEmailVerified) {
-      return res.status(400).json({ message: "Email already verified." });
-    }
+    if (!user) return res.status(404).json({ message: "User not found." });
+    if (user.isEmailVerified) return res.status(400).json({ message: "Email already verified." });
 
     const emailSent = await sendVerificationEmail(user);
-    const safeUser = await User.findById(user._id).select("-password");
 
-    res.json({ message: "Verification email resent.", data: safeUser, emailSent });
+    // Return only what the frontend needs — not the full user object
+    res.json({ message: "Verification email resent.", emailSent });
   } catch (err) {
     next(err);
   }
 }
 
-// Forgot password
+// Forgot password 
 async function forgotPassword(req, res, next) {
   try {
     const { email } = req.body;
-
     const user = await User.findOne({ email: email.toLowerCase().trim() });
 
+    // Always return the same generic message to prevent email enumeration
     if (!user) {
-      console.log(`Password reset attempted for non-existent email: ${email}`);
       return res.json({
         message: "If your email is registered, you'll receive a password reset link shortly."
       });
@@ -279,7 +253,7 @@ async function forgotPassword(req, res, next) {
 
     if (user.authProvider === "google" && !user.password) {
       return res.json({
-        message: "If your email is registered, you'll receive a password reset link shortly. Note: Google sign-in accounts cannot reset passwords this way."
+        message: "This account uses Google sign-in. Please use the Google sign-in button."
       });
     }
 
@@ -292,7 +266,7 @@ async function forgotPassword(req, res, next) {
 
     const result = await sendEmail(
       user.email,
-      "Reset Your Password - Game Tracker",
+      "Reset Your Password – Keep Track",
       `
         <h2>Reset Your Password</h2>
         <p>Hi ${user.firstName},</p>
@@ -303,9 +277,7 @@ async function forgotPassword(req, res, next) {
       `
     );
 
-    if (!result.ok) {
-      console.error("Failed to send password reset email:", result.error);
-    }
+    if (!result.ok) console.error("Failed to send password reset email:", result.error);
 
     res.json({
       message: "If your email is registered, you'll receive a password reset link shortly."
@@ -315,7 +287,7 @@ async function forgotPassword(req, res, next) {
   }
 }
 
-// Reset password
+// Reset password 
 async function resetPassword(req, res, next) {
   try {
     const { token, password } = req.body;
@@ -332,9 +304,7 @@ async function resetPassword(req, res, next) {
     }
 
     const user = await User.findById(payload.id);
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
-    }
+    if (!user) return res.status(404).json({ message: "User not found." });
 
     if (user.authProvider !== "local") {
       return res.status(400).json({
@@ -342,6 +312,7 @@ async function resetPassword(req, res, next) {
       });
     }
 
+    // Confirm token matches stored value (single-use enforcement)
     if (!user.resetPasswordToken || user.resetPasswordToken !== token) {
       return res.status(400).json({
         message: "Invalid or already-used token. Please request a new password reset."
@@ -352,22 +323,18 @@ async function resetPassword(req, res, next) {
       user.resetPasswordToken = undefined;
       user.resetPasswordExpires = undefined;
       await user.save();
-
       return res.status(400).json({
         message: "Token has expired. Please request a new password reset."
       });
     }
 
     if (password.length < 8) {
-      return res.status(400).json({
-        message: "Password must be at least 8 characters long."
-      });
+      return res.status(400).json({ message: "Password must be at least 8 characters long." });
     }
 
     user.password = password;
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
-
     await user.save();
 
     const freshToken = createToken(user);

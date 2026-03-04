@@ -76,7 +76,7 @@ async function sendFriendRequest(req, res, next) {
 // Accept or reject a friend request
 async function respondToFriendRequest(req, res, next) {
   try {
-    const { senderId, action } = req.body; // "Accepted" or "Rejected"
+    const { senderId, action } = req.body; 
     const currentUserId = req.user.id;
 
     const user = await User.findById(currentUserId);
@@ -97,7 +97,7 @@ async function respondToFriendRequest(req, res, next) {
       await Notification.create({
         recipient: senderId,
         sender: currentUserId,
-        type: NotificationTypes.FRIEND_ACCEPT, // (UI supports FRIEND_ACCEPT or FRIEND_ACCEPTED)
+        type: NotificationTypes.FRIEND_ACCEPT,
         message: `${user.firstName} ${user.lastName || ""} accepted your friend request.`
       });
 

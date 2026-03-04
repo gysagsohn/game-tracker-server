@@ -47,7 +47,7 @@ router.delete("/sessions/:id", authMiddleware, adminCheck, deleteSessionByAdmin)
 
 // Analytics & Tools
 router.get("/search", authMiddleware, adminCheck, searchUsers);
-router.get("/stats/users", authMiddleware, adminCheck, getSystemUserStats); // UPDATED
+router.get("/stats/users", authMiddleware, adminCheck, getSystemUserStats); 
 router.get("/stats/games", authMiddleware, adminCheck, getGameStats);
 router.get("/sessions/range", authMiddleware, adminCheck, getSessionsByDateRange);
 router.get("/stats/match-counts", authMiddleware, adminCheck, getMatchCountsGrouped);

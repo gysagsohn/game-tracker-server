@@ -1,6 +1,6 @@
 /**
- * Application-wide limits and thresholds
- * Centralized to make configuration easier and prevent magic numbers
+ * Application-wide limits and thresholds.
+ * Centralized to prevent magic numbers and make tuning easy.
  */
 
 module.exports = {
@@ -9,23 +9,26 @@ module.exports = {
     // Auth endpoints (login, signup, password reset)
     AUTH_MAX_REQUESTS: 5,
     AUTH_WINDOW_MS: 10 * 60 * 1000, // 10 minutes
-    
+
     // Friend request sending
     FRIEND_REQUEST_MAX: 5,
     FRIEND_REQUEST_WINDOW_MS: 60 * 60 * 1000, // 1 hour
 
-    // NEW: Session/Match operations
+    // Session/Match creation
     MATCH_CREATE_MAX: 10,
-    MATCH_CREATE_WINDOW_MS: 60 * 60 * 1000, // 1 hour (10 matches/hour)
+    MATCH_CREATE_WINDOW_MS: 60 * 60 * 1000, // 1 hour
 
-    //Search operations
+    // Match reminder emails — previously undefined, causing broken rate limiting
+    MATCH_REMINDER_MAX: 3,
+    MATCH_REMINDER_WINDOW_MS: 60 * 60 * 1000, // 1 hour
+
+    // Search operations
     SEARCH_MAX: 20,
-    SEARCH_WINDOW_MS: 60 * 1000, // 1 minute (20 searches/minute)
-    
-    //General API rate limit (fallback)
-    GENERAL_MAX: 100,
-    GENERAL_WINDOW_MS: 60 * 1000, // 1 minute (100 requests/minute)
+    SEARCH_WINDOW_MS: 60 * 1000, // 1 minute
 
+    // General API rate limit (fallback)
+    GENERAL_MAX: 100,
+    GENERAL_WINDOW_MS: 60 * 1000, // 1 minute
   },
 
   // Email rate limiting

@@ -1,15 +1,15 @@
 const { FRONTEND_URL } = require("./urls");
 
 /**
- * Wrap raw body HTML in a branded, responsive template.
+ * Wrap raw body HTML in a branded, responsive email template.
  *
  * @param {Object} opts
- * @param {string} opts.title     - <title> tag + heading
- * @param {string} opts.bodyHtml  - inner HTML for the message body
- * @param {string} [opts.preheader] - short preview text shown in inbox (hidden in email body)
- * @returns {string} Full HTML email
+ * @param {string} opts.title      - <title> tag and visible heading
+ * @param {string} opts.bodyHtml   - Inner HTML for the message body
+ * @param {string} [opts.preheader] - Short preview text shown in inbox (hidden in email body)
+ * @returns {string} Full HTML email string
  */
-function renderEmail({ title = "Game Tracker", bodyHtml = "", preheader = "" } = {}) {
+function renderEmail({ title = "Keep Track", bodyHtml = "", preheader = "" } = {}) {
   const safePre = (preheader || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const brandHref = FRONTEND_URL || "#";
 
@@ -20,13 +20,11 @@ function renderEmail({ title = "Game Tracker", bodyHtml = "", preheader = "" } =
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>${title}</title>
 <style>
-  /* Client resets */
   body,table,td,a{ -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
   table,td{ mso-table-lspace:0pt; mso-table-rspace:0pt; }
   img{ -ms-interpolation-mode:bicubic; border:0; outline:none; text-decoration:none; }
   table{ border-collapse:collapse !important; }
-  body{ margin:0; padding:0; width:100%!important; background:#0f172a; color:#e5e7eb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji','Segoe UI Emoji','Segoe UI Symbol', sans-serif; }
-  /* Container */
+  body{ margin:0; padding:0; width:100%!important; background:#0f172a; color:#e5e7eb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
   .wrapper{ width:100%; padding:24px; }
   .card{ max-width:600px; margin:0 auto; background:#111827; border:1px solid #1f2937; border-radius:16px; overflow:hidden; }
   .brand{ padding:20px 24px; background:#0b1220; border-bottom:1px solid #1f2937; }
@@ -45,15 +43,15 @@ function renderEmail({ title = "Game Tracker", bodyHtml = "", preheader = "" } =
 <div class="wrapper">
   <div class="card">
     <div class="brand">
-      <a href="${brandHref}">Game Tracker</a>
+      <a href="${brandHref}">Keep Track</a>
     </div>
     <div class="header">${title}</div>
     <div class="body">
       ${bodyHtml}
     </div>
     <div class="footer muted">
-      You’re receiving this because you have a Game Tracker account.
-      If this wasn’t you, you can safely ignore this email.
+      You're receiving this because you have a Keep Track account.
+      If this wasn't you, you can safely ignore this email.
     </div>
   </div>
 </div>

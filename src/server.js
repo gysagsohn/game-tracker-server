@@ -39,8 +39,8 @@ const corsOptions = {
   },
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
   allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: false, // you don’t use cookies; keep this false
-  optionsSuccessStatus: 204, // standard for preflight
+  credentials: false, 
+  optionsSuccessStatus: 204, 
 };
 
 // Apply CORS globally (for all requests)

@@ -8,7 +8,7 @@ async function matchPrivacyGuard(req, res, next) {
   }
 
   if (user.role === "admin") {
-    return next(); // Admins have full access
+    return next();
   }
 
   try {

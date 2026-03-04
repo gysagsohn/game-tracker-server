@@ -2,28 +2,49 @@ const User = require("../models/UserModel");
 const Game = require("../models/GameModel");
 const Session = require("../models/SessionModel");
 
-// View all users and sessions
+// GET /admin/users
+// Returns all users (minus passwords) alongside all sessions.
+// Used by the admin dashboard for a full system overview.
 async function getAllUsersWithMatches(req, res, next) {
   try {
     const users = await User.find().select("-password");
-    const sessions = await Session.find()
-      .populate("game players.user"); 
+    const sessions = await Session.find().populate("game players.user");
     res.json({ users, sessions });
   } catch (err) {
     next(err);
   }
 }
 
-// CRUD - Users
+// PUT /admin/users/:id
+// Updates a user. Only whitelisted fields are accepted — this prevents
+// an admin from accidentally overwriting password (which would store it
+// unhashed since findByIdAndUpdate bypasses the pre-save hook), or
+// other sensitive fields like resetPasswordToken.
 async function updateUserByAdmin(req, res, next) {
   try {
-    const updated = await User.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const allowedFields = ["firstName", "lastName", "email", "role", "isSuspended", "isEmailVerified"];
+
+    const updates = {};
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ message: "No valid fields to update." });
+    }
+
+    const updated = await User.findByIdAndUpdate(req.params.id, updates, { new: true }).select("-password");
+    if (!updated) return res.status(404).json({ message: "User not found." });
+
     res.json(updated);
   } catch (err) {
     next(err);
   }
 }
 
+// DELETE /admin/users/:id
+// Permanently deletes a user account.
+// Note: does not cascade-delete their sessions or notifications — see technical debt in README.
 async function deleteUserByAdmin(req, res, next) {
   try {
     await User.findByIdAndDelete(req.params.id);
@@ -33,7 +54,8 @@ async function deleteUserByAdmin(req, res, next) {
   }
 }
 
-// CRUD - Games
+// POST /admin/games
+// Creates a new game directly (admin bypass — no isCustom flag required)
 async function createGameByAdmin(req, res, next) {
   try {
     const newGame = new Game(req.body);
@@ -44,6 +66,7 @@ async function createGameByAdmin(req, res, next) {
   }
 }
 
+// PUT /admin/games/:id
 async function updateGameByAdmin(req, res, next) {
   try {
     const updated = await Game.findByIdAndUpdate(req.params.id, req.body, { new: true });
@@ -53,6 +76,7 @@ async function updateGameByAdmin(req, res, next) {
   }
 }
 
+// DELETE /admin/games/:id
 async function deleteGameByAdmin(req, res, next) {
   try {
     await Game.findByIdAndDelete(req.params.id);
@@ -62,7 +86,7 @@ async function deleteGameByAdmin(req, res, next) {
   }
 }
 
-// CRUD - Sessions
+// PUT /admin/sessions/:id
 async function updateSessionByAdmin(req, res, next) {
   try {
     const updated = await Session.findByIdAndUpdate(req.params.id, req.body, { new: true });
@@ -72,6 +96,7 @@ async function updateSessionByAdmin(req, res, next) {
   }
 }
 
+// DELETE /admin/sessions/:id
 async function deleteSessionByAdmin(req, res, next) {
   try {
     await Session.findByIdAndDelete(req.params.id);
@@ -81,7 +106,9 @@ async function deleteSessionByAdmin(req, res, next) {
   }
 }
 
-// Analytics
+// GET /admin/search?query=...
+// Searches users by name or email. Uses raw RegExp — admin-only route
+// so risk is low, but sanitization would be a good future improvement.
 async function searchUsers(req, res, next) {
   try {
     const query = req.query.query || "";
@@ -98,19 +125,21 @@ async function searchUsers(req, res, next) {
   }
 }
 
-
+// GET /admin/stats/users
+// Returns high-level user counts for the admin dashboard
 async function getSystemUserStats(req, res, next) {
   try {
     const totalUsers = await User.countDocuments();
     const verifiedUsers = await User.countDocuments({ isEmailVerified: true });
     const admins = await User.countDocuments({ role: "admin" });
-
     res.json({ totalUsers, verifiedUsers, admins });
   } catch (err) {
     next(err);
   }
 }
 
+// GET /admin/stats/games
+// Aggregates session data to show how many times each game has been played
 async function getGameStats(req, res, next) {
   try {
     const stats = await Session.aggregate([
@@ -139,11 +168,13 @@ async function getGameStats(req, res, next) {
   }
 }
 
+// GET /admin/sessions/range?start=...&end=...
+// Returns all sessions within a date range (inclusive of end-of-day)
 async function getSessionsByDateRange(req, res, next) {
   try {
     const start = new Date(req.query.start);
     const end = new Date(req.query.end);
-    end.setHours(23, 59, 59, 999);
+    end.setHours(23, 59, 59, 999); // include the full end day
 
     const sessions = await Session.find({
       date: { $gte: start, $lte: end }
@@ -155,6 +186,8 @@ async function getSessionsByDateRange(req, res, next) {
   }
 }
 
+// GET /admin/stats/match-counts?unit=week|month
+// Groups match counts by week or month for charting
 async function getMatchCountsGrouped(req, res, next) {
   try {
     const unit = req.query.unit === "month" ? "%Y-%m" : "%Y-%U";
@@ -171,6 +204,9 @@ async function getMatchCountsGrouped(req, res, next) {
   }
 }
 
+// GET /admin/stats/top-players
+// Returns the top 10 users sorted by stored win count.
+// Note: user.stats.wins is not currently auto-updated — see README technical debt.
 async function getTopPlayers(req, res, next) {
   try {
     const users = await User.find()
@@ -183,6 +219,9 @@ async function getTopPlayers(req, res, next) {
   }
 }
 
+// GET /admin/stats/win-rates
+// Calculates win rate per user from stored stats.
+// Note: same caveat as getTopPlayers — stats.wins may be stale.
 async function getUserWinRates(req, res, next) {
   try {
     const users = await User.find().select("firstName lastName stats");
@@ -190,7 +229,6 @@ async function getUserWinRates(req, res, next) {
     const winRates = users.map(user => {
       const total = user.stats.wins + user.stats.losses;
       const rate = total > 0 ? (user.stats.wins / total) * 100 : 0;
-
       return {
         name: `${user.firstName} ${user.lastName}`,
         winRate: Math.round(rate)
@@ -203,14 +241,13 @@ async function getUserWinRates(req, res, next) {
   }
 }
 
-// Admin tools
+// POST /admin/users/:id/reset-stats
+// Resets a user's stored win/loss stats to zero
 async function resetUserStats(req, res, next) {
   try {
     const user = await User.findByIdAndUpdate(
       req.params.id,
-      {
-        stats: { wins: 0, losses: 0, mostPlayed: "" }
-      },
+      { stats: { wins: 0, losses: 0, mostPlayed: "" } },
       { new: true }
     );
     res.json({ message: "User stats reset", user });
@@ -219,34 +256,18 @@ async function resetUserStats(req, res, next) {
   }
 }
 
+// POST /admin/users/:id/resend-verification
+// Sends a fresh verification email to an unverified user.
+// Uses the shared sendVerificationEmail helper from authController.
 async function resendVerificationAsAdmin(req, res, next) {
   try {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: "User not found" });
     if (user.isEmailVerified) return res.status(400).json({ message: "Already verified" });
 
-    // Import utilities
-    const sendEmail = require("../utils/sendEmail");
-    const jwt = require("jsonwebtoken");
-
-    // Generate verification token (1 hour expiry)
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
-    const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
-
-    // Send verification email with proper text and html
-    await sendEmail({
-      to: user.email,
-      subject: "Verify Your Email - Game Tracker",
-      text: `Hi ${user.firstName},\n\nPlease verify your email by clicking this link:\n${verificationUrl}\n\nThis link expires in 1 hour.\n\nThe Game Tracker Team`,
-      html: `
-        <h2>Verify Your Email</h2>
-        <p>Hi ${user.firstName},</p>
-        <p>Click the button below to verify your email address:</p>
-        <p><a href="${verificationUrl}" style="display: inline-block; padding: 12px 24px; background: #5865F2; color: white; text-decoration: none; border-radius: 8px;">Verify Email</a></p>
-        <p style="color: #666; font-size: 14px;">Or copy this link: ${verificationUrl}</p>
-        <p style="color: #999; font-size: 12px;">This link will expire in 1 hour.</p>
-      `
-    });
+    // Reuse the shared helper so email template stays consistent
+    const { sendVerificationEmail } = require("../controllers/authController");
+    await sendVerificationEmail(user);
 
     res.json({ message: "Verification email resent successfully." });
   } catch (err) {
@@ -254,29 +275,34 @@ async function resendVerificationAsAdmin(req, res, next) {
   }
 }
 
+// POST /admin/users/:id/force-verify
+// Marks a user's email as verified without sending an email.
+// Useful for manual support cases.
 async function forceVerifyUser(req, res, next) {
   try {
     const user = await User.findByIdAndUpdate(
-      req.params.id, 
-      { isEmailVerified: true }, 
+      req.params.id,
+      { isEmailVerified: true },
       { new: true }
     ).select("-password");
-    
+
     res.json({ message: "User email verified by admin", user });
   } catch (err) {
     next(err);
   }
 }
 
+// POST /admin/users/:id/toggle-suspend
+// Toggles a user's suspended state. Suspended users cannot log in.
 async function toggleSuspendUser(req, res, next) {
   try {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: "User not found" });
-    
+
     user.isSuspended = !user.isSuspended;
     await user.save();
-    
-    res.json({ 
+
+    res.json({
       message: user.isSuspended ? "User suspended" : "User reactivated",
       user: { id: user._id, isSuspended: user.isSuspended }
     });
@@ -285,6 +311,8 @@ async function toggleSuspendUser(req, res, next) {
   }
 }
 
+// GET /admin/sessions
+// Returns all sessions across all users, newest first
 async function getAllSessionsForAdmin(req, res, next) {
   try {
     const sessions = await Session.find()
@@ -306,7 +334,7 @@ module.exports = {
   updateSessionByAdmin,
   deleteSessionByAdmin,
   searchUsers,
-  getSystemUserStats, 
+  getSystemUserStats,
   getGameStats,
   getSessionsByDateRange,
   getMatchCountsGrouped,
