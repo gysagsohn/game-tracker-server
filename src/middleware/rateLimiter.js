@@ -33,6 +33,14 @@ const searchLimiter = makeLimiter({
   message: "Too many search requests. Please slow down.",
 });
 
+// Friend requests — moved here from friendRouter.js for consistency
+const friendRequestLimiter = makeLimiter({
+  envPrefix: "FRIEND",
+  defaultMax: RATE_LIMIT.FRIEND_REQUEST_MAX,
+  defaultWindowMs: RATE_LIMIT.FRIEND_REQUEST_WINDOW_MS,
+  message: "Too many friend requests sent. Please try again later.",
+});
+
 // General API rate limit (fallback for unprotected routes)
 const generalLimiter = makeLimiter({
   envPrefix: "GENERAL",
@@ -46,5 +54,6 @@ module.exports = {
   matchCreateLimiter,
   matchReminderLimiter,
   searchLimiter,
+  friendRequestLimiter,
   generalLimiter,
 };

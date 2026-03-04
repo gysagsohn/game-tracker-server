@@ -294,6 +294,7 @@ async function resetPassword(req, res, next) {
 }
 
 module.exports = {
+  createToken,
   signup,
   login,
   verifyEmail,

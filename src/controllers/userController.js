@@ -1,37 +1,15 @@
 const User = require("../models/UserModel");
-const Game = require("../models/GameModel");
 const Session = require("../models/SessionModel");
 const mongoose = require("mongoose");
 const logUserActivity = require("../utils/logActivity");
 const { sanitizeObject } = require("../utils/sanitize");
-const { DATA } = require("../constants/limits")
+const { DATA } = require("../constants/limits");
 
 // GET /users/me
 async function getLoggedInUser(req, res, next) {
   try {
     const user = await User.findById(req.user.id).select("-password");
     res.json({ message: "Fetched logged-in user", data: user });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// GET /users
-async function getAllUsers(req, res, next) {
-  try {
-    const users = await User.find().select("-password");
-    res.json({ message: "Fetched all users", data: users });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// POST /users
-async function createUser(req, res, next) {
-  try {
-    const newUser = new User(req.body);
-    await newUser.save();
-    res.status(201).json({ message: "User created", data: newUser });
   } catch (err) {
     next(err);
   }
@@ -48,33 +26,78 @@ async function getUserById(req, res, next) {
   }
 }
 
-// PUT /users/:id
+/**
+ * Update the current user's profile.
+ * Only firstName, lastName, and profileIcon can be changed by the user.
+ *
+ * @route PUT /users/:id
+ */
 async function updateUser(req, res, next) {
   try {
-    // Whitelist: only these fields can be updated by users
     const allowedFields = ["firstName", "lastName", "profileIcon"];
-    
-    // Sanitize the allowed fields
     const updates = sanitizeObject(req.body, allowedFields);
-    
+
     if (Object.keys(updates).length === 0) {
-      return res.status(400).json({ 
-        message: "No valid fields to update" 
-      });
+      return res.status(400).json({ message: "No valid fields to update" });
     }
-    
+
     const updated = await User.findByIdAndUpdate(
       req.params.id,
       updates,
       { new: true, runValidators: true }
     ).select("-password");
-    
+
     if (!updated) {
       return res.status(404).json({ message: "User not found" });
     }
-    
+
     await logUserActivity(req.user._id, "Updated Profile");
     res.json({ message: "User updated", data: updated });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Change the current user's password.
+ * Verifies the current password before applying the new one.
+ * Only available to local (email/password) accounts.
+ *
+ * @route POST /users/change-password
+ */
+async function changePassword(req, res, next) {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: "Current and new password are required." });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({ message: "New password must be at least 8 characters." });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: "User not found." });
+
+    if (user.authProvider !== "local") {
+      return res.status(400).json({
+        message: "This account uses Google sign-in. Password cannot be changed here."
+      });
+    }
+
+    const isMatch = await user.comparePassword(currentPassword);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Current password is incorrect." });
+    }
+
+    // Assign and save so the pre('save') hook hashes the new password.
+    // findByIdAndUpdate bypasses the hook and would store plaintext.
+    user.password = newPassword;
+    await user.save();
+
+    await logUserActivity(req.user._id, "Changed Password");
+    res.json({ message: "Password updated successfully." });
   } catch (err) {
     next(err);
   }
@@ -85,45 +108,64 @@ async function deleteUser(req, res, next) {
   try {
     await User.findByIdAndDelete(req.params.id);
     res.status(204).end();
-    } catch (err) {
-      next(err);
-    }
+  } catch (err) {
+    next(err);
   }
+}
 
-// GET /users/:id/stats
+/**
+ * Calculate stats for a user from their session history.
+ *
+ * Returns:
+ * - Win/loss/draw counts and total matches
+ * - Win rate percentage
+ * - Current win streak
+ * - Most played game
+ * - Favorite opponent (most matches together)
+ * - Best win-rate opponent (min 2 games)
+ *
+ * Note: calculates dynamically from sessions rather than reading
+ * user.stats, which is a stored snapshot that is never updated.
+ *
+ * @route GET /users/:id/stats
+ */
 async function getUserStats(req, res, next) {
   try {
     const userId = new mongoose.Types.ObjectId(req.params.id);
     const sessions = await Session.find({ "players.user": userId })
-      .populate("game players.user");
+      .populate("game players.user")
+      .sort({ date: 1 }); // ascending for streak calculation
 
     if (sessions.length === 0) {
       return res.json({ message: "No matches found", data: {} });
     }
 
     let wins = 0, losses = 0, draws = 0;
+    let currentStreak = 0, longestStreak = 0, streakTemp = 0;
     const gameCounts = {};
     const opponentCounts = {};
     const opponentWins = {};
 
     for (const session of sessions) {
-      // Skip sessions that somehow have no players array
       const players = Array.isArray(session.players) ? session.players : [];
-
-      // Find "me" safely
       const me = players.find(p => p.user && p.user._id && p.user._id.equals(userId));
       if (!me) continue;
 
-      // Tally W/L/D safely
-      if (me.result === "Win") wins++;
-      else if (me.result === "Loss") losses++;
-      else if (me.result === "Draw") draws++;
+      if (me.result === "Win") {
+        wins++;
+        streakTemp++;
+        if (streakTemp > longestStreak) longestStreak = streakTemp;
+      } else if (me.result === "Loss") {
+        losses++;
+        streakTemp = 0;
+      } else if (me.result === "Draw") {
+        draws++;
+        // draws don't break or extend a win streak
+      }
 
-      // Game title (handle deleted/missing game)
       const title = session?.game?.name || "Unknown Game";
       gameCounts[title] = (gameCounts[title] || 0) + 1;
 
-      // Opponent tallies
       for (const p of players) {
         if (!p.user || !p.user._id || p.user._id.equals(userId)) continue;
         const oppId = p.user._id.toString();
@@ -132,18 +174,25 @@ async function getUserStats(req, res, next) {
       }
     }
 
-    // Derive most played game (string name)
-    const mostPlayedGame = Object.entries(gameCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+    // Current streak = the running streakTemp at the end of the sorted list
+    currentStreak = streakTemp;
 
-    // Favorite opponent by frequency
-    const favoriteOpponentId = Object.entries(opponentCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+    const totalMatches = wins + losses + draws;
+    const winRate = totalMatches > 0 ? Math.round((wins / totalMatches) * 100) : 0;
+
+    const mostPlayedGame = Object.entries(gameCounts)
+      .sort((a, b) => b[1] - a[1])[0]?.[0];
+
+    // Most-played-against opponent
+    const favoriteOpponentId = Object.entries(opponentCounts)
+      .sort((a, b) => b[1] - a[1])[0]?.[0];
     const favoriteOpponent = favoriteOpponentId
       ? sessions
           .flatMap(s => Array.isArray(s.players) ? s.players : [])
           .find(p => p.user && p.user._id && p.user._id.toString() === favoriteOpponentId)?.user
       : null;
 
-    // Best win-rate opponent (min 2 games)
+    // Best win-rate opponent (min 2 games together)
     const winRateOpponents = Object.entries(opponentCounts)
       .filter(([_, count]) => count >= 2)
       .map(([id, total]) => ({
@@ -153,13 +202,11 @@ async function getUserStats(req, res, next) {
       .sort((a, b) => b.winRate - a.winRate);
 
     const topOpponentId = winRateOpponents[0]?.opponentId;
-    const favoriteWinOpponent = topOpponentId
+    const bestWinOpponent = topOpponentId
       ? sessions
           .flatMap(s => Array.isArray(s.players) ? s.players : [])
           .find(p => p.user && p.user._id && p.user._id.toString() === topOpponentId)?.user
       : null;
-
-    const totalMatches = wins + losses + draws;
 
     return res.json({
       message: "User stats calculated",
@@ -168,16 +215,19 @@ async function getUserStats(req, res, next) {
         wins,
         losses,
         draws,
-        mostPlayedGame, // string (may be "Unknown Game")
+        winRate,           // e.g. 67 (percent)
+        currentStreak,     // current consecutive wins at time of last match
+        longestStreak,     // all-time best consecutive win streak
+        mostPlayedGame,
         favoriteOpponent: favoriteOpponent
           ? {
               name: `${favoriteOpponent.firstName || ""} ${favoriteOpponent.lastName || ""}`.trim(),
-              matchesTogether: favoriteOpponentId ? opponentCounts[favoriteOpponentId] : 0,
+              matchesTogether: opponentCounts[favoriteOpponentId],
             }
           : null,
-        favoriteWinOpponent: favoriteWinOpponent
+        bestWinOpponent: bestWinOpponent
           ? {
-              name: `${favoriteWinOpponent.firstName || ""} ${favoriteWinOpponent.lastName || ""}`.trim(),
+              name: `${bestWinOpponent.firstName || ""} ${bestWinOpponent.lastName || ""}`.trim(),
               winRate: (winRateOpponents[0]?.winRate ?? 0) + "%",
             }
           : null,
@@ -192,50 +242,41 @@ async function getUserStats(req, res, next) {
 async function searchUsers(req, res, next) {
   try {
     const { sanitizeString } = require("../utils/sanitize");
-
     const query = sanitizeString(req.query.q || "");
-    
     const currentUserId = req.user._id.toString();
-    
+
     if (query.length < DATA.SEARCH_QUERY_MIN_LENGTH) {
-      return res.status(400).json({ 
-        message: "Search query must be at least 2 characters" 
-      });
+      return res.status(400).json({ message: "Search query must be at least 2 characters" });
     }
 
-    // Search by name or email (case-insensitive)
     const users = await User.find({
       $and: [
         {
           $or: [
             { firstName: new RegExp(query, "i") },
             { lastName: new RegExp(query, "i") },
-            { email: new RegExp(query, "i") }
-          ]
+            { email: new RegExp(query, "i") },
+          ],
         },
-        { _id: { $ne: currentUserId } }, // Exclude yourself
-        { isSuspended: false } // Exclude suspended users
-      ]
+        { _id: { $ne: currentUserId } },
+        { isSuspended: false },
+      ],
     })
-    .select("firstName lastName email profileIcon")
-    .limit(DATA.SEARCH_RESULTS_MAX); // Limit results to prevent overload
+      .select("firstName lastName email profileIcon")
+      .limit(DATA.SEARCH_RESULTS_MAX);
 
-    res.json({ 
-      message: "Search results", 
-      data: users 
-    });
+    res.json({ message: "Search results", data: users });
   } catch (err) {
     next(err);
   }
 }
 
 module.exports = {
-  getAllUsers,
-  createUser,
+  getLoggedInUser,
   getUserById,
   updateUser,
+  changePassword,
   deleteUser,
   getUserStats,
-  getLoggedInUser,
-  searchUsers
+  searchUsers,
 };
