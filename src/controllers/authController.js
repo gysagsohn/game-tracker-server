@@ -1,7 +1,7 @@
 const User = require("../models/UserModel");
 const jwt = require("jsonwebtoken");
 const sendEmail = require("../utils/sendEmail");
-const Session = require("../models/SessionModel");
+const linkGuestSessions = require("../utils/linkGuestSessions.js  ");
 
 /** Create a signed JWT for a user (7-day expiry) */
 function createToken(user) {
@@ -44,7 +44,7 @@ async function sendVerificationEmail(user) {
   return result.ok;
 }
 
-// Signup 
+// Signup
 async function signup(req, res, next) {
   try {
     const { firstName, lastName, email, password } = req.body;
@@ -69,66 +69,9 @@ async function signup(req, res, next) {
 
     await newUser.save();
 
-    // Link any guest matches created before this user signed up
-    const sessionsWithGuest = await Session.find({
-      'players.email': newUser.email,
-      'players.user': null
-    });
-
-    if (sessionsWithGuest.length > 0) {
-      const inviterIds = new Set();
-
-      for (const session of sessionsWithGuest) {
-        session.players.forEach((player) => {
-          if (player.email === newUser.email && !player.user) {
-            player.user = newUser._id;
-            player.confirmed = true;
-          }
-        });
-        if (session.createdBy) inviterIds.add(session.createdBy.toString());
-        await session.save();
-      }
-
-      // Auto-friend each match creator
-      for (const inviterId of inviterIds) {
-        if (inviterId === newUser._id.toString()) continue;
-        try {
-          const inviter = await User.findById(inviterId);
-          if (!inviter) continue;
-          const alreadyFriends = newUser.friends?.some(f => f.toString() === inviterId);
-          if (!alreadyFriends) {
-            newUser.friends = newUser.friends || [];
-            newUser.friends.push(inviterId);
-            inviter.friends = inviter.friends || [];
-            if (!inviter.friends.some(f => f.toString() === newUser._id.toString())) {
-              inviter.friends.push(newUser._id);
-            }
-            await inviter.save();
-          }
-        } catch (friendErr) {
-          console.warn("Auto-friend failed for inviter", inviterId, friendErr.message);
-        }
-      }
-
-      await newUser.save();
-
-      // Notify the new user that their past matches have been linked
-      try {
-        const result = await sendEmail(
-          newUser.email,
-          'Your Guest Matches Have Been Linked! – Keep Track',
-          `
-            <h2>Welcome to Keep Track, ${newUser.firstName}!</h2>
-            <p>Good news! We found <strong>${sessionsWithGuest.length} match(es)</strong> where you were invited as a guest.</p>
-            <p>These have now been linked to your new account.</p>
-            <p><a href="${process.env.FRONTEND_URL}/matches" style="display: inline-block; padding: 10px 20px; background: #5865F2; color: white; text-decoration: none; border-radius: 8px;">View Your Matches</a></p>
-          `
-        );
-        if (!result.ok) console.error("Failed to send guest match notification:", result.error);
-      } catch (error) {
-        console.error("Failed to send guest match notification:", error);
-      }
-    }
+    // Link any guest matches created before this user signed up.
+    // linkGuestSessions also auto-friends match creators and sends a notification email.
+    await linkGuestSessions(newUser);
 
     const emailSent = await sendVerificationEmail(newUser);
     const safeUser = await User.findById(newUser._id).select("-password");
@@ -144,7 +87,7 @@ async function signup(req, res, next) {
   }
 }
 
-// Login 
+// Login
 async function login(req, res, next) {
   try {
     const { email, password } = req.body;
@@ -183,7 +126,7 @@ async function login(req, res, next) {
   }
 }
 
-// Email verification 
+// Email verification
 async function verifyEmail(req, res, next) {
   try {
     const token = req.query.token;
@@ -220,7 +163,7 @@ async function verifyEmail(req, res, next) {
   }
 }
 
-//  Resend verification email 
+// Resend verification email
 async function resendVerificationEmail(req, res, next) {
   try {
     const { email } = req.body;
@@ -238,7 +181,7 @@ async function resendVerificationEmail(req, res, next) {
   }
 }
 
-// Forgot password 
+// Forgot password
 async function forgotPassword(req, res, next) {
   try {
     const { email } = req.body;
@@ -287,7 +230,7 @@ async function forgotPassword(req, res, next) {
   }
 }
 
-// Reset password 
+// Reset password
 async function resetPassword(req, res, next) {
   try {
     const { token, password } = req.body;

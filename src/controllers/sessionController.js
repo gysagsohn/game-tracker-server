@@ -1,6 +1,5 @@
 const Session = require("../models/SessionModel");
 const sendEmail = require("../utils/sendEmail");
-const rateLimitCache = {};
 const logUserActivity = require("../utils/logActivity");
 const User = require("../models/UserModel");
 const Notification = require("../models/NotificationModel");
@@ -8,9 +7,17 @@ const NotificationTypes = require("../constants/notificationTypes");
 const { sanitizeArray, sanitizeString } = require("../utils/sanitize");
 const { FRONTEND_URL } = require("../utils/urls");
 const renderEmail = require("../utils/renderEmail");
-const { EMAIL } = require("../constants/limits")
+const { EMAIL } = require("../constants/limits");
 
-// GET /sessions
+// In-memory rate limit cache for guest invites — keyed by "email_date".
+// Resets on server restart. Known limitation: see rateLimitCache in limits.js.
+const rateLimitCache = {};
+
+/**
+ * Get all sessions the current user is a player in.
+ *
+ * @route GET /sessions
+ */
 async function getAllSessions(req, res, next) {
   try {
     const sessions = await Session.find({ "players.user": req.user._id })
@@ -23,110 +30,114 @@ async function getAllSessions(req, res, next) {
   }
 }
 
-// POST /sessions
-  async function createSession(req, res, next) {
-    try {
-      const { game, players, notes, date } = req.body;
+/**
+ * Create a new session (match).
+ *
+ * Player confirmation rules:
+ * - Guest players (no user ref) → auto-confirmed, no action needed
+ * - The match creator → auto-confirmed
+ * - Other registered players → start unconfirmed, must confirm manually
+ *
+ * If all players end up confirmed at creation time (e.g. solo log),
+ * the match status is set to "Confirmed" immediately.
+ *
+ * @route POST /sessions
+ */
+async function createSession(req, res, next) {
+  try {
+    const { game, players, notes, date } = req.body;
 
-      // Sanitize session-level fields
-      const sanitizedNotes = typeof notes === "string" ? sanitizeString(notes) : notes;
+    const sanitizedNotes = typeof notes === "string" ? sanitizeString(notes) : notes;
+    const sanitizedPlayers = sanitizeArray(players || [], ["name", "email"]);
 
-      // Sanitize player array (names and emails)
-      const sanitizedPlayers = sanitizeArray(players || [], ["name", "email"]);
+    let allConfirmed = true;
+    let guestEmailsSent = 0;
 
-      let allConfirmed = true;
-      let guestEmailsSent = 0;
+    for (const player of sanitizedPlayers) {
+      if (!player.user) {
+        // Guest players are auto-confirmed — no account to link to yet
+        player.confirmed = true;
 
-      for (const player of sanitizedPlayers) {
-        if (!player.user) {
-          // Guest players are auto-confirmed
-          player.confirmed = true;
+        if (player.invited && player.email) {
+          // Rate-limit guest invite emails per address per day
+          const key = `${player.email}_${new Date().toDateString()}`;
+          const sentToday = rateLimitCache[key] || 0;
 
-          if (player.invited && player.email) {
-            const key = `${player.email}_${new Date().toDateString()}`;
-            const sentToday = rateLimitCache[key] || 0;
-
-            if (sentToday < EMAIL.GUEST_INVITES_PER_EMAIL_PER_DAY) {
-              const ok = await sendGuestInviteEmail(player.email, player.name);
-              if (ok) guestEmailsSent += 1;
-              rateLimitCache[key] = sentToday + 1;
-            } else {
-              console.log(`Invite limit reached for ${player.email}`);
-            }
+          if (sentToday < EMAIL.GUEST_INVITES_PER_EMAIL_PER_DAY) {
+            const ok = await sendGuestInviteEmail(player.email, player.name);
+            if (ok) guestEmailsSent += 1;
+            rateLimitCache[key] = sentToday + 1;
+          } else {
+            console.log(`Invite limit reached for ${player.email}`);
           }
-        } else if (player.user.toString() === req.user._id.toString()) {
-          // Match creator → auto-confirm yourself
-          player.confirmed = true;
-        } else {
-          // Other registered players must confirm manually
-          player.confirmed = false;
-          allConfirmed = false;
         }
+      } else if (player.user.toString() === req.user._id.toString()) {
+        // Match creator is always confirmed
+        player.confirmed = true;
+      } else {
+        // Registered players other than the creator must confirm manually
+        player.confirmed = false;
+        allConfirmed = false;
       }
-
-      const matchStatus = allConfirmed ? "Confirmed" : "Pending";
-
-      const session = new Session({
-        game,
-        players: sanitizedPlayers,
-        notes: sanitizedNotes,
-        matchStatus,
-        createdBy: req.user._id,
-        date: date || Date.now()
-      });
-
-      await session.save();
-
-      // POPULATE to get game name and creator name
-      await session.populate("game");
-      await session.populate("createdBy", "firstName lastName");
-
-      // Notify registered players (excluding creator)
-      try {
-        const creatorId = req.user._id.toString();
-        
-        //  Get names for notifications
-        const creatorName = session.createdBy
-          ? `${session.createdBy.firstName} ${session.createdBy.lastName}`.trim()
-          : "Someone";
-        const gameName = session.game?.name || "a game";
-        
-        // Filter for registered players (excluding creator)
-        const registered = (sanitizedPlayers || []).filter(
-          p => p.user && p.user.toString() !== creatorId
-        );
-
-        if (registered.length) {
-          // Create personalized notifications
-          await Notification.insertMany(
-            registered.map(p => {
-              //  Find player's result from the sanitizedPlayers array
-              const playerResult = p.result 
-                ? `${p.result} result` 
-                : "result";
-              
-              return {
-                recipient: p.user,
-                sender: req.user._id,
-                type: NotificationTypes.MATCH_INVITE,
-                message: `${creatorName} added you to a ${gameName} match. Please confirm your ${playerResult}.`,
-                session: session._id
-              };
-            })
-          );
-        }
-      } catch (e) {
-        console.warn("Failed to emit MATCH_INVITE notifications:", e.message);
-      }
-
-      res.status(201).json({ message: "Match created", data: session, guestEmailsSent });
-    } catch (err) {
-      next(err);
     }
+
+    const matchStatus = allConfirmed ? "Confirmed" : "Pending";
+
+    const session = new Session({
+      game,
+      players: sanitizedPlayers,
+      notes: sanitizedNotes,
+      matchStatus,
+      createdBy: req.user._id,
+      date: date || Date.now(),
+    });
+
+    await session.save();
+
+    await session.populate("game");
+    await session.populate("createdBy", "firstName lastName");
+
+    // Notify all registered players except the creator
+    try {
+      const creatorId = req.user._id.toString();
+      const creatorName = session.createdBy
+        ? `${session.createdBy.firstName} ${session.createdBy.lastName}`.trim()
+        : "Someone";
+      const gameName = session.game?.name || "a game";
+
+      const registered = (sanitizedPlayers || []).filter(
+        (p) => p.user && p.user.toString() !== creatorId
+      );
+
+      if (registered.length) {
+        await Notification.insertMany(
+          registered.map((p) => ({
+            recipient: p.user,
+            sender: req.user._id,
+            type: NotificationTypes.MATCH_INVITE,
+            message: `${creatorName} added you to a ${gameName} match. Please confirm your result.`,
+            session: session._id,
+          }))
+        );
+      }
+    } catch (e) {
+      console.warn("Failed to emit MATCH_INVITE notifications:", e.message);
+    }
+
+    res.status(201).json({ message: "Match created", data: session, guestEmailsSent });
+  } catch (err) {
+    next(err);
   }
+}
 
-
-// Helper
+/**
+ * Send a guest invite email with a signup link.
+ * Guests can create an account later to claim their match history.
+ *
+ * @param {string} email - Guest's email address
+ * @param {string} [name="Player"] - Guest's display name
+ * @returns {Promise<boolean>} true if email sent successfully
+ */
 async function sendGuestInviteEmail(email, name = "Player") {
   const wrapped = renderEmail({
     title: "You're invited to a game!",
@@ -135,17 +146,21 @@ async function sendGuestInviteEmail(email, name = "Player") {
       <p>Hi ${name},</p>
       <p>You were added to a match as a guest. Create an account to track your stats and claim games.</p>
       <p><a class="button" href="${FRONTEND_URL}/signup">Sign up & claim your games</a></p>
-    `
+    `,
   });
-  
+
   const result = await sendEmail(email, "Keep Track – Claim Your Games", wrapped);
   return result.ok;
 }
 
-// GET /sessions/:id
+/**
+ * Get a single session by ID.
+ * Returns full player, game, creator, and editor details.
+ *
+ * @route GET /sessions/:id
+ */
 async function getSessionById(req, res, next) {
   try {
-
     const session = await Session.findById(req.params.id)
       .populate("game")
       .populate("players.user", "firstName lastName email")
@@ -159,7 +174,15 @@ async function getSessionById(req, res, next) {
   }
 }
 
-// PUT /sessions/:id
+/**
+ * Update a session. Any player in the match (or an admin) can edit it.
+ *
+ * Confirmation state is preserved for players already in the session —
+ * a player who has already confirmed doesn't lose that status after an edit.
+ * Newly added players start unconfirmed.
+ *
+ * @route PUT /sessions/:id
+ */
 async function updateSession(req, res, next) {
   try {
     const session = await Session.findById(req.params.id);
@@ -167,7 +190,8 @@ async function updateSession(req, res, next) {
 
     const userId = req.user._id.toString();
 
-    const isPlayer = session.players.some(p => p.user && p.user.toString() === userId);
+    // Any player in the match can edit, not just the creator
+    const isPlayer = session.players.some((p) => p.user && p.user.toString() === userId);
     const isAdmin = req.user.role === "admin";
     if (!isPlayer && !isAdmin) {
       return res.status(403).json({ message: "Only players in this match can edit it." });
@@ -175,45 +199,44 @@ async function updateSession(req, res, next) {
 
     const { game, players, notes, date } = req.body;
 
-    const sanitizedNotes = notes !== undefined && typeof notes === "string"
-      ? sanitizeString(notes)
-      : notes;
-
-    const sanitizedPlayers = players !== undefined
-      ? sanitizeArray(players, ["name", "email"])
-      : undefined;
+    const sanitizedNotes =
+      notes !== undefined && typeof notes === "string" ? sanitizeString(notes) : notes;
+    const sanitizedPlayers =
+      players !== undefined ? sanitizeArray(players, ["name", "email"]) : undefined;
 
     if (game !== undefined) session.game = game;
     if (sanitizedNotes !== undefined) session.notes = sanitizedNotes;
     if (date !== undefined) session.date = date;
 
     if (sanitizedPlayers !== undefined) {
-      const existingPlayers = session.players.map(p => ({
+      // Snapshot existing confirmation state before overwriting the players array
+      const existingPlayers = session.players.map((p) => ({
         userId: p.user ? p.user.toString() : null,
         confirmed: p.confirmed,
-        confirmedAt: p.confirmedAt
+        confirmedAt: p.confirmedAt,
       }));
 
-      session.players = sanitizedPlayers.map(p => {
+      session.players = sanitizedPlayers.map((p) => {
         if (!p.user) {
+          // Guests remain auto-confirmed
           return { ...p, confirmed: true };
         }
-        const existing = existingPlayers.find(ep => ep.userId === p.user.toString());
+        // Carry over existing confirmation for returning players; default false for new ones
+        const existing = existingPlayers.find((ep) => ep.userId === p.user.toString());
         return {
           ...p,
           confirmed: existing ? existing.confirmed : false,
-          confirmedAt: existing?.confirmedAt
+          confirmedAt: existing?.confirmedAt,
         };
       });
 
-      const anyUnconfirmed = session.players.some(p => p.user && !p.confirmed);
+      const anyUnconfirmed = session.players.some((p) => p.user && !p.confirmed);
       session.matchStatus = anyUnconfirmed ? "Pending" : "Confirmed";
     }
 
     session.lastEditedBy = req.user._id;
     await session.save();
 
-    
     const populated = await Session.findById(session._id)
       .populate("game")
       .populate("players.user", "firstName lastName email")
@@ -222,22 +245,22 @@ async function updateSession(req, res, next) {
 
     await logUserActivity(req.user._id, "Updated Match", { sessionId: session._id });
 
-    // Notify other players of the update
+    // Notify all other players that the match was edited
     try {
       const editorName = `${req.user.firstName} ${req.user.lastName}`.trim() || "A player";
       const gameName = populated.game?.name || "the match";
       const recipients = populated.players
-        .filter(p => p.user && p.user._id && p.user._id.toString() !== userId)
-        .map(p => p.user._id);
+        .filter((p) => p.user && p.user._id && p.user._id.toString() !== userId)
+        .map((p) => p.user._id);
 
       if (recipients.length) {
         await Notification.insertMany(
-          recipients.map(uid => ({
+          recipients.map((uid) => ({
             recipient: uid,
             sender: req.user._id,
             type: NotificationTypes.MATCH_UPDATED,
             message: `${editorName} updated the ${gameName} match details.`,
-            session: session._id
+            session: session._id,
           }))
         );
       }
@@ -251,8 +274,11 @@ async function updateSession(req, res, next) {
   }
 }
 
-// DELETE /sessions/:id
-// Only the match creator (or an admin) can delete a match.
+/**
+ * Delete a session. Only the match creator (or an admin) can do this.
+ *
+ * @route DELETE /sessions/:id
+ */
 async function deleteSession(req, res, next) {
   try {
     const session = await Session.findById(req.params.id);
@@ -273,18 +299,23 @@ async function deleteSession(req, res, next) {
   }
 }
 
-// GET /sessions/my-pending
-// Returns matches where the current user specifically has not confirmed.
-// Uses $elemMatch to ensure both conditions apply to the SAME player entry.
+/**
+ * Get sessions where the current user's own player entry is unconfirmed.
+ * Uses $elemMatch so both conditions (user ref + confirmed: false) must
+ * apply to the SAME player entry — a plain query would incorrectly match
+ * sessions where the user is confirmed but another player is not.
+ *
+ * @route GET /sessions/my-pending
+ */
 async function getMyPendingSessions(req, res, next) {
   try {
     const sessions = await Session.find({
       players: {
         $elemMatch: {
           user: req.user._id,
-          confirmed: false
-        }
-      }
+          confirmed: false,
+        },
+      },
     }).populate("game players.user");
 
     res.json({ message: "Fetched pending matches", data: sessions });
@@ -293,7 +324,17 @@ async function getMyPendingSessions(req, res, next) {
   }
 }
 
-// POST /sessions/:id/confirm
+/**
+ * Confirm the current user's result for a match.
+ *
+ * Notification logic:
+ * - Players who are still pending get a nudge showing who has confirmed so far.
+ * - Players who already confirmed get a progress update (or a "fully confirmed!" message).
+ * - The confirmer themselves is only notified when the match reaches full confirmation —
+ *   there's no value in notifying them at intermediate steps.
+ *
+ * @route POST /sessions/:id/confirm
+ */
 async function confirmSession(req, res, next) {
   try {
     const session = await Session.findById(req.params.id)
@@ -305,13 +346,11 @@ async function confirmSession(req, res, next) {
 
     const userId = req.user._id.toString();
     let found = false;
-    let myResult = "";
 
-    session.players.forEach(player => {
+    session.players.forEach((player) => {
       if (player.user && player.user._id.toString() === userId) {
         player.confirmed = true;
         player.confirmedAt = new Date();
-        myResult = player.result || "their result";
         found = true;
       }
     });
@@ -320,7 +359,7 @@ async function confirmSession(req, res, next) {
       return res.status(403).json({ message: "You are not a registered player in this match." });
     }
 
-    const stillPending = session.players.filter(p => p.user && !p.confirmed);
+    const stillPending = session.players.filter((p) => p.user && !p.confirmed);
     const anyUnconfirmed = stillPending.length > 0;
     session.matchStatus = anyUnconfirmed ? "Pending" : "Confirmed";
 
@@ -332,7 +371,7 @@ async function confirmSession(req, res, next) {
       ? `${confirmingUser.firstName} ${confirmingUser.lastName}`.trim()
       : "A player";
     const gameName = session.game?.name || "the match";
-    const pendingNames = stillPending.map(p => p.user?.firstName || "Someone").join(", ");
+    const pendingNames = stillPending.map((p) => p.user?.firstName || "Someone").join(", ");
 
     try {
       const notifications = [];
@@ -340,37 +379,36 @@ async function confirmSession(req, res, next) {
       for (const player of session.players) {
         if (!player.user) continue;
         const recipientId = player.user._id.toString();
-
-        // FIX: removed the skip for confirmer — they get notified when match is fully confirmed
         const isConfirmer = recipientId === userId;
         const isStillPending = !player.confirmed;
 
         let message;
 
         if (isConfirmer) {
-          // Only notify the confirmer if the match is now fully confirmed
+          // Only notify the confirmer when the match is fully confirmed —
+          // intermediate confirmations don't need a self-notification
           if (!anyUnconfirmed) {
             message = `All players have confirmed ${gameName}. Match is fully confirmed!`;
           } else {
-            continue; // confirmer doesn't need an intermediate notification
+            continue;
           }
         } else if (isStillPending) {
+          // Tell pending players who has confirmed so far, to prompt them to act
           const othersConfirmed = session.players
-            .filter(p => p.user && p.user._id.toString() !== recipientId && p.confirmed)
-            .map(p => p.user.firstName || "Someone");
+            .filter((p) => p.user && p.user._id.toString() !== recipientId && p.confirmed)
+            .map((p) => p.user.firstName || "Someone");
 
-          const confirmedList = othersConfirmed.length > 0
-            ? othersConfirmed.join(", ")
-            : confirmerName;
+          const confirmedList =
+            othersConfirmed.length > 0 ? othersConfirmed.join(", ") : confirmerName;
 
-          message = `${confirmerName} confirmed their result for ${gameName}. ${confirmedList} ${othersConfirmed.length === 1 ? "has" : "have"} confirmed — still waiting on you.`;
+          message = `${confirmerName} confirmed their result for ${gameName}. ${confirmedList} ${
+            othersConfirmed.length === 1 ? "has" : "have"
+          } confirmed — still waiting on you.`;
         } else {
-          // Already confirmed, not the confirmer
-          if (anyUnconfirmed) {
-            message = `${confirmerName} confirmed their result for ${gameName}. Still waiting on: ${pendingNames}.`;
-          } else {
-            message = `All players have confirmed ${gameName}. Match is fully confirmed!`;
-          }
+          // Already confirmed, not the confirmer — show overall progress
+          message = anyUnconfirmed
+            ? `${confirmerName} confirmed their result for ${gameName}. Still waiting on: ${pendingNames}.`
+            : `All players have confirmed ${gameName}. Match is fully confirmed!`;
         }
 
         notifications.push({
@@ -378,7 +416,7 @@ async function confirmSession(req, res, next) {
           sender: req.user._id,
           type: NotificationTypes.MATCH_CONFIRMED,
           message,
-          session: session._id
+          session: session._id,
         });
       }
 
@@ -395,66 +433,65 @@ async function confirmSession(req, res, next) {
   }
 }
 
-// POST /sessions/:id/decline
+/**
+ * Decline a match invitation. Removes the current user from the player list.
+ *
+ * If no registered players remain after removal, the match is deleted entirely —
+ * a match with only guests has no one to manage it.
+ *
+ * @route POST /sessions/:id/decline
+ */
 async function declineSession(req, res, next) {
   try {
     const session = await Session.findById(req.params.id)
       .populate("createdBy", "firstName lastName email")
       .populate("players.user", "firstName lastName email");
-    
+
     if (!session) {
       return res.status(404).json({ message: "Match not found." });
     }
 
     const userId = req.user._id.toString();
-    
-    // Find player index
+
     const playerIndex = session.players.findIndex(
-      p => p.user && p.user._id.toString() === userId
+      (p) => p.user && p.user._id.toString() === userId
     );
-    
+
     if (playerIndex === -1) {
       return res.status(403).json({ message: "You are not a registered player in this match." });
     }
 
-    // Get declining user info for notification
     const decliningUser = await User.findById(userId).select("firstName lastName");
-    const declinerName = decliningUser 
+    const declinerName = decliningUser
       ? `${decliningUser.firstName} ${decliningUser.lastName}`.trim()
       : "A player";
 
-    // Remove the player from the match
     session.players.splice(playerIndex, 1);
-    
-    // If no registered players left (only guests or empty), delete the match
-    const hasRegisteredPlayers = session.players.some(p => p.user);
-    
+
+    // If no registered players remain, delete the match — it can't be managed
+    const hasRegisteredPlayers = session.players.some((p) => p.user);
+
     if (!hasRegisteredPlayers) {
       await Session.findByIdAndDelete(req.params.id);
-      
-      await logUserActivity(
-        req.user._id, 
-        "Declined Match (Match Deleted - No Players)", 
-        { sessionId: session._id }
-      );
-      
-      return res.json({ 
+      await logUserActivity(req.user._id, "Declined Match (Match Deleted - No Players)", {
+        sessionId: session._id,
+      });
+      return res.json({
         message: "Match declined and deleted (no registered players remaining).",
-        matchDeleted: true
+        matchDeleted: true,
       });
     }
 
-    // Otherwise, save the updated session
     await session.save();
 
-    // Recalculate match status after player removal
-    const anyUnconfirmed = session.players.some(p => p.user && !p.confirmed);
+    // Recalculate status after the player list changed
+    const anyUnconfirmed = session.players.some((p) => p.user && !p.confirmed);
     session.matchStatus = anyUnconfirmed ? "Pending" : "Confirmed";
     await session.save();
 
     await logUserActivity(req.user._id, "Declined Match", { sessionId: session._id });
 
-    // Notify creator that the user declined
+    // Notify the creator (unless the decliner is the creator)
     try {
       if (session.createdBy && session.createdBy._id.toString() !== userId) {
         await Notification.create({
@@ -462,23 +499,30 @@ async function declineSession(req, res, next) {
           sender: req.user._id,
           type: NotificationTypes.MATCH_DECLINED,
           message: `${declinerName} declined the match invitation.`,
-          session: session._id  
+          session: session._id,
         });
       }
     } catch (e) {
       console.warn("Failed to emit MATCH_DECLINED notification:", e.message);
     }
 
-    return res.json({ 
+    return res.json({
       message: "You have declined this match.",
-      data: session 
+      data: session,
     });
   } catch (err) {
     next(err);
   }
 }
 
-// POST /sessions/:id/remind
+/**
+ * Send reminder emails and in-app notifications to unconfirmed players.
+ *
+ * Rate-limited by a cooldown window (MATCH_REMINDER_COOLDOWN_MS) stored on
+ * the session document — prevents spam if a creator clicks remind repeatedly.
+ *
+ * @route POST /sessions/:id/remind
+ */
 async function remindMatchConfirmation(req, res, next) {
   try {
     const session = await Session.findById(req.params.id).populate("players.user");
@@ -490,12 +534,13 @@ async function remindMatchConfirmation(req, res, next) {
     const REMINDER_COOLDOWN = EMAIL.MATCH_REMINDER_COOLDOWN_MS;
     const now = Date.now();
 
+    // Enforce cooldown — lastReminderSent is updated at the end of this handler
     if (session.lastReminderSent && now - session.lastReminderSent.getTime() < REMINDER_COOLDOWN) {
       return res.status(429).json({ message: "Reminder already sent recently. Try again later." });
     }
 
     const unconfirmed = session.players.filter(
-      p => p.user && !p.confirmed && p.user.email
+      (p) => p.user && !p.confirmed && p.user.email
     );
 
     if (unconfirmed.length === 0) {
@@ -513,24 +558,24 @@ async function remindMatchConfirmation(req, res, next) {
         preheader: "Please review and confirm your game result",
         bodyHtml: `
           <p>Hi ${name},</p>
-          <p>You’ve been added to a game but haven’t confirmed your result yet.</p>
+          <p>You've been added to a game but haven't confirmed your result yet.</p>
           <p><a class="button" href="${confirmLink}">Review & confirm</a></p>
           <p class="muted">Direct link:<br/><span style="word-break:break-all">${confirmLink}</span></p>
-        `
+        `,
       });
       const { ok } = await sendEmail(email, "Reminder – Confirm Your Game Result", html);
       if (ok) reminderEmailsSent += 1;
     }
 
-    // Emit in-app reminders too
+    // In-app reminders alongside the emails
     try {
       await Notification.insertMany(
-        unconfirmed.map(p => ({
+        unconfirmed.map((p) => ({
           recipient: p.user._id,
           sender: req.user._id,
           type: NotificationTypes.MATCH_REMINDER,
           message: `Reminder to confirm your match.`,
-          session: session._id
+          session: session._id,
         }))
       );
     } catch (e) {
@@ -542,20 +587,18 @@ async function remindMatchConfirmation(req, res, next) {
 
     await logUserActivity(req.user._id, "Sent Match Confirmation Reminder", {
       sessionId: session._id,
-      remindedCount: unconfirmed.length
+      remindedCount: unconfirmed.length,
     });
 
     res.json({
       message: "Reminder emails processed",
       data: { count: unconfirmed.length },
-      reminderEmailsSent
+      reminderEmailsSent,
     });
   } catch (err) {
     next(err);
   }
 }
-
-
 
 module.exports = {
   getAllSessions,
@@ -566,7 +609,5 @@ module.exports = {
   confirmSession,
   declineSession,
   remindMatchConfirmation,
-  getMyPendingSessions
+  getMyPendingSessions,
 };
-
-

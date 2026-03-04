@@ -7,15 +7,20 @@ const { FRONTEND_URL } = require("../utils/urls");
 const renderEmail = require("../utils/renderEmail");
 const { sanitizeString } = require("../utils/sanitize");
 
-// Send a friend request
+/**
+ * Send a friend request to another user by email address.
+ * Creates an in-app notification and sends an email to the recipient.
+ *
+ * @route POST /friends/send
+ */
 async function sendFriendRequest(req, res, next) {
   try {
     const email = sanitizeString(req.body.email?.trim() || "");
-    
+
     if (!email) {
       return res.status(400).json({ message: "Email is required." });
     }
-    
+
     const currentUserId = req.user.id;
 
     const sender = await User.findById(currentUserId);
@@ -34,34 +39,32 @@ async function sendFriendRequest(req, res, next) {
     if (alreadyRequested) return res.status(400).json({ message: "Friend request already sent." });
     if (alreadyFriends) return res.status(400).json({ message: "You are already friends." });
 
-    // Add friend request
     recipient.friendRequests.push({ user: currentUserId, status: "Pending" });
     await recipient.save();
 
-    // Log + notify
     await Notification.create({
       recipient: recipient._id,
       sender: currentUserId,
       type: NotificationTypes.FRIEND_REQUEST,
-      message: `${sender.firstName} ${sender.lastName || ''} sent you a friend request.`
+      message: `${sender.firstName} ${sender.lastName || ""} sent you a friend request.`,
     });
 
     await logUserActivity(currentUserId, "Sent Friend Request", { to: recipient._id });
 
-    // Try sending email
     const html = renderEmail({
       title: "You've got a friend request",
       preheader: `${sender.firstName} sent you a friend request`,
       bodyHtml: `
         <p>Hi ${recipient.firstName || ""},</p>
-        <p><strong>${sender.firstName || ""} ${sender.lastName || ""}</strong> sent you a friend request on Game Tracker.</p>
+        <p><strong>${sender.firstName || ""} ${sender.lastName || ""}</strong> sent you a friend request on Keep Track.</p>
         <p><a class="button" href="${FRONTEND_URL}/friends?tab=requests">View request</a></p>
-      `
+      `,
     });
+
     let emailSent = false;
     try {
-      const result = await sendEmail(recipient.email, "New Friend Request – Game Tracker", html);
-      emailSent = result.ok; 
+      const result = await sendEmail(recipient.email, "New Friend Request – Keep Track", html);
+      emailSent = result.ok;
     } catch (emailErr) {
       console.warn("Friend email failed:", emailErr.message);
     }
@@ -72,11 +75,17 @@ async function sendFriendRequest(req, res, next) {
   }
 }
 
-
-// Accept or reject a friend request
+/**
+ * Accept or reject a pending friend request.
+ * On accept: adds each user to the other's friends list,
+ * creates an in-app notification, and sends a confirmation email.
+ *
+ * @route POST /friends/respond
+ * @body {{ senderId: string, action: "Accepted" | "Rejected" }}
+ */
 async function respondToFriendRequest(req, res, next) {
   try {
-    const { senderId, action } = req.body; 
+    const { senderId, action } = req.body;
     const currentUserId = req.user.id;
 
     const user = await User.findById(currentUserId);
@@ -98,13 +107,13 @@ async function respondToFriendRequest(req, res, next) {
         recipient: senderId,
         sender: currentUserId,
         type: NotificationTypes.FRIEND_ACCEPT,
-        message: `${user.firstName} ${user.lastName || ""} accepted your friend request.`
+        message: `${user.firstName} ${user.lastName || ""} accepted your friend request.`,
       });
 
       try {
         await sendEmail(
           sender.email,
-          "Friend Request Accepted – Game Tracker",
+          "Friend Request Accepted – Keep Track",
           `<p>${user.firstName} ${user.lastName || ""} accepted your friend request.</p>`
         );
       } catch (emailErr) {
@@ -116,14 +125,18 @@ async function respondToFriendRequest(req, res, next) {
 
     res.json({
       message: `Friend request ${action.toLowerCase()}.`,
-      data: { friendId: senderId, status: action }
+      data: { friendId: senderId, status: action },
     });
   } catch (err) {
     next(err);
   }
 }
 
-// Get your pending friend requests
+/**
+ * Get all pending incoming friend requests for the current user.
+ *
+ * @route GET /friends/requests
+ */
 async function getPendingFriendRequests(req, res, next) {
   try {
     const user = await User.findById(req.user.id).populate(
@@ -137,7 +150,11 @@ async function getPendingFriendRequests(req, res, next) {
   }
 }
 
-// Get friend list
+/**
+ * Get the friend list for any user by their ID.
+ *
+ * @route GET /friends/list/:id
+ */
 async function getFriendList(req, res, next) {
   try {
     const user = await User.findById(req.params.id).populate(
@@ -150,7 +167,12 @@ async function getFriendList(req, res, next) {
   }
 }
 
-// Suggest friends
+/**
+ * Suggest friends based on friends-of-friends.
+ * Excludes people the user is already friends with and themselves.
+ *
+ * @route GET /friends/suggested
+ */
 async function getSuggestedFriends(req, res, next) {
   try {
     const user = await User.findById(req.user.id);
@@ -159,7 +181,10 @@ async function getSuggestedFriends(req, res, next) {
     const suggestions = new Set();
     for (const friend of friends) {
       for (const f of friend.friends) {
-        if (f.toString() !== req.user.id && !user.friends.includes(f)) {
+        // Use toString() comparison — ObjectIds don't support === or Array.includes()
+        const isMe = f.toString() === req.user.id;
+        const alreadyFriend = user.friends.some((id) => id.toString() === f.toString());
+        if (!isMe && !alreadyFriend) {
           suggestions.add(f.toString());
         }
       }
@@ -174,7 +199,12 @@ async function getSuggestedFriends(req, res, next) {
   }
 }
 
-// Unfriend
+/**
+ * Remove a friend from both users' friend lists (bidirectional).
+ *
+ * @route POST /friends/unfriend
+ * @body {{ friendId: string }}
+ */
 async function unfriendUser(req, res, next) {
   try {
     const { friendId } = req.body;
@@ -197,8 +227,11 @@ async function unfriendUser(req, res, next) {
 }
 
 /**
- * Notifications — paginated, with unreadCount
- * GET /friends/notifications?status=all|unread&page=1&limit=20
+ * Get notifications for the current user, paginated.
+ * Supports filtering by read status via ?status=all|unread.
+ * Always includes a separate unreadCount regardless of the active filter.
+ *
+ * @route GET /friends/notifications?status=all|unread&page=1&limit=20
  */
 async function getNotifications(req, res, next) {
   try {
@@ -209,7 +242,7 @@ async function getNotifications(req, res, next) {
     const skip = (page - 1) * limit;
 
     const baseQuery = { recipient: userId };
-    const unreadQuery = { ...baseQuery, read: false };  
+    const unreadQuery = { ...baseQuery, read: false };
 
     const [unreadCount, total, items] = await Promise.all([
       Notification.countDocuments(unreadQuery),
@@ -219,29 +252,33 @@ async function getNotifications(req, res, next) {
         .skip(skip)
         .limit(limit)
         .populate("sender", "firstName lastName email")
-        .lean()
+        .lean(),
     ]);
 
     return res.json({
       message: "Fetched notifications",
       data: items,
-      meta: { page, limit, total, unreadCount }
+      meta: { page, limit, total, unreadCount },
     });
   } catch (err) {
     next(err);
   }
 }
 
-// Mark one notification read
+/**
+ * Mark a single notification as read.
+ * The recipient check prevents users from marking others' notifications.
+ *
+ * @route PUT /friends/notifications/:id/read
+ */
 async function markNotificationAsRead(req, res, next) {
   try {
-    
     const notification = await Notification.findOneAndUpdate(
       { _id: req.params.id, recipient: req.user.id },
       { read: true },
       { new: true }
     );
-    
+
     if (!notification) {
       return res.status(404).json({ message: "Notification not found" });
     }
@@ -251,27 +288,35 @@ async function markNotificationAsRead(req, res, next) {
   }
 }
 
-// Mark ALL notifications as read
+/**
+ * Mark all of the current user's unread notifications as read in one operation.
+ *
+ * @route PUT /friends/notifications/read-all
+ */
 async function readAllNotifications(req, res, next) {
   try {
     const userId = req.user.id;
     const result = await Notification.updateMany(
-      { recipient: userId, read: { $ne: true } },  
-      { $set: { read: true } }  
+      { recipient: userId, read: { $ne: true } },
+      { $set: { read: true } }
     );
     return res.json({
       message: "All notifications marked as read",
       data: {
         matched: result.matchedCount ?? result.n,
-        modified: result.modifiedCount ?? result.nModified
-      }
+        modified: result.modifiedCount ?? result.nModified,
+      },
     });
   } catch (err) {
     next(err);
   }
 }
 
-// Mutuals
+/**
+ * Get friends that the current user and another user have in common.
+ *
+ * @route GET /friends/mutual/:id
+ */
 async function getMutualFriends(req, res, next) {
   try {
     const user = await User.findById(req.user.id);
@@ -291,25 +336,28 @@ async function getMutualFriends(req, res, next) {
   }
 }
 
-// Get requests YOU have sent to others (defaults to Pending only)
+/**
+ * Get friend requests that the current user has sent to others.
+ * Defaults to Pending only; pass ?status=All|Accepted|Rejected to filter differently.
+ *
+ * @route GET /friends/sent
+ */
 async function getSentFriendRequests(req, res, next) {
   try {
     const userId = req.user.id;
-    const status = (req.query.status || "Pending"); // allow ?status=Accepted|Rejected|Pending|All
+    const status = req.query.status || "Pending";
 
-    // Build $elemMatch for status filtering
+    // $elemMatch ensures only requests FROM this user are matched
     const elem =
       status === "All"
         ? { user: userId }
         : { user: userId, status };
 
-    // Find users who have a request from you
     const recipients = await User.find(
       { friendRequests: { $elemMatch: elem } },
       "firstName lastName email friendRequests"
     ).lean();
 
-    // Return as an array of { user: <recipient>, status }
     const data = recipients.map((rec) => {
       const reqFromMe = rec.friendRequests.find(
         (fr) => String(fr.user) === String(userId) && (status === "All" || fr.status === status)
@@ -342,5 +390,5 @@ module.exports = {
   markNotificationAsRead,
   readAllNotifications,
   getMutualFriends,
-  getSentFriendRequests
+  getSentFriendRequests,
 };
