@@ -18,7 +18,7 @@ module.exports = {
     MATCH_CREATE_MAX: 10,
     MATCH_CREATE_WINDOW_MS: 60 * 60 * 1000, // 1 hour
 
-    // Match reminder emails — previously undefined, causing broken rate limiting
+    // Match reminder emails
     MATCH_REMINDER_MAX: 3,
     MATCH_REMINDER_WINDOW_MS: 60 * 60 * 1000, // 1 hour
 
